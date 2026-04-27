@@ -9,6 +9,7 @@ CHANNEL_ID = -1003667470993
 URL = f"https://api.telegram.org/bot{TOKEN}/"
 
 top5_watchlist = []
+ticker_states = {}
 
 
 def send_message(chat_id, text):
@@ -38,21 +39,19 @@ def extract_ticker(line):
 
 def handle_top5(text):
     global top5_watchlist
+    global ticker_states
 
     raw = text.split(":")[-1].strip().split()
     top5_watchlist = [clean_ticker(t) for t in raw][:5]
+    ticker_states = {}
 
     message = "📊 TOP 5 — TODAY\n\n"
     message += "\n".join(top5_watchlist)
-    message += """
+    message += "\n\n—\n\n"
+    message += "Focus: Short Interest + Borrow Pressure + DTC\n"
+    message += "Execution: Selective\n\n"
+    message += "#Top5"
 
-—
-
-Focus: Momentum + Pressure Alignment
-Execution: Selective
-
-#Top5
-"""
     send_message(CHANNEL_ID, message)
 
 
@@ -60,7 +59,59 @@ def ticker_allowed(ticker):
     return ticker in top5_watchlist
 
 
+def set_state(ticker, state):
+    ticker_states[ticker] = state
+
+
+def get_state(ticker):
+    return ticker_states.get(ticker, "Unclassified")
+
+
+def send_ticking(ticker):
+    set_state(ticker, "Ticking Time Bomb")
+
+    send_message(CHANNEL_ID, f"""💣 TICKING TIME BOMB
+
+{ticker}
+
+Low-DTC setup — immediate reaction potential
+
+Short interest elevated
+Borrow pressure active
+
+—
+
+Classification: Pre-Squeeze
+Status: Ready
+Timeframe: Short-term
+
+#Ready""")
+
+
+def send_pressure(ticker):
+    set_state(ticker, "Pressure Cooker")
+
+    send_message(CHANNEL_ID, f"""⚡ PRESSURE COOKER
+
+{ticker}
+
+High-DTC compression — pressure building
+
+Short interest elevated
+Borrow pressure tightening
+
+—
+
+Classification: Pre-Squeeze
+Status: Building
+Timeframe: Intraday
+
+#Pressure""")
+
+
 def send_breakout(ticker):
+    origin = get_state(ticker)
+
     send_message(CHANNEL_ID, f"""🚨 BREAKOUT ALERT
 
 {ticker}
@@ -72,49 +123,11 @@ Pressure releasing
 
 —
 
-Classification: Breakout
-Status: Active
+Origin: {origin}
+Status: Triggered
 Timeframe: Intraday
 
 #Breakout""")
-
-
-def send_pressure(ticker):
-    send_message(CHANNEL_ID, f"""⚡ PRESSURE COOKER
-
-{ticker}
-
-Compression building — No release yet
-
-Volume steady
-Range tightening
-
-—
-
-Classification: Pressure
-Status: Building
-Timeframe: Intraday
-
-#Pressure""")
-
-
-def send_ticking(ticker):
-    send_message(CHANNEL_ID, f"""💣 TICKING TIME BOMB
-
-{ticker}
-
-Trigger proximity — Immediate reaction zone
-
-Low DTC
-High sensitivity
-
-—
-
-Classification: Pre-Breakout
-Status: Ready
-Timeframe: Short-term
-
-#Ready""")
 
 
 def handle_signal(line):
@@ -139,15 +152,17 @@ def handle_signal(line):
 
 
 def handle_message(text, chat_id):
-    if text.lower() == "test":
+    clean_text = text.strip()
+
+    if clean_text.lower() == "test":
         send_message(CHANNEL_ID, "⚙️ Test alert working")
         return
 
-    if text.lower().startswith("top 5"):
-        handle_top5(text)
+    if clean_text.lower().startswith("top 5"):
+        handle_top5(clean_text)
         return
 
-    for line in text.split("\n"):
+    for line in clean_text.split("\n"):
         handle_signal(line.strip())
 
 
@@ -172,7 +187,6 @@ def main():
                     handle_message(text, chat_id)
 
         time.sleep(2)
-
 
 if __name__ == "__main__":
     main()
