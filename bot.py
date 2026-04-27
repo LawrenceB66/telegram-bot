@@ -19,17 +19,20 @@ BREAKOUT_KEYWORDS = [
     "ripping"
 ]
 
+
 def send_message(chat_id, text):
     requests.get(URL + "sendMessage", params={
         "chat_id": chat_id,
         "text": text
     })
 
+
 def get_updates(offset=None):
     params = {"timeout": 100}
     if offset:
         params["offset"] = offset
     return requests.get(URL + "getUpdates", params=params).json()
+
 
 def format_alert(text):
     lines = text.strip().split("\n")
@@ -40,32 +43,48 @@ def format_alert(text):
     for line in lines:
         line = line.strip()
 
-        # Handle Top 5
         if "top 5" in line.lower():
             tickers = line.split(":")[-1].strip().split()
-            tickers = [f"${t.replace('$','').upper()}" for t in tickers]
+            tickers = [f"${t.replace('$', '').upper()}" for t in tickers]
             top5 = " ".join(tickers)
             continue
 
         parts = line.split()
         if len(parts) >= 2:
             ticker = parts[0].replace("$", "").upper()
-            action = " ".join(parts[1:]).capitalize()
-            formatted_lines.append(f"${ticker} — {action}")
+            action = " ".join(parts[1:]).lower()
+            formatted_lines.append((f"${ticker}", action))
 
-    message = ""
+    is_breakout = any(keyword in text.lower() for keyword in BREAKOUT_KEYWORDS)
 
-    if any(keyword in text.lower() for keyword in BREAKOUT_KEYWORDS):
-        message += "🚨 BREAKOUT ALERT\n\n"
+    if is_breakout:
+        message = "🚨 BREAKOUT ALERT\n\n"
+
+        for ticker, action in formatted_lines:
+            message += f"""{ticker}
+
+Momentum Expansion — Active
+
+• Volume accelerating
+• Pressure releasing
+
+#Breakout"""
+            break
+
     else:
-        message += "⚡ PRESSURE FLOW\n\n"
+        message = "⚡ PRESSURE FLOW\n\n"
 
-    message += "\n".join(formatted_lines)
+        for ticker, action in formatted_lines:
+            clean_action = action.capitalize()
+            message += f"{ticker} — {clean_action}\n"
+
+        message = message.strip()
 
     if top5:
         message += f"\n\n🧠 Top 5:\n{top5}"
 
     return message
+
 
 def handle_message(text, chat_id):
     if text == "/start":
@@ -81,6 +100,7 @@ def handle_message(text, chat_id):
 
     else:
         print("Ignored:", text)
+
 
 def main():
     last_update = None
@@ -103,6 +123,7 @@ def main():
                     handle_message(text.lower(), chat_id)
 
         time.sleep(2)
+
 
 if __name__ == "__main__":
     main()
