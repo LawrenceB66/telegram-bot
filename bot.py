@@ -61,17 +61,6 @@ def handle_message(raw_text, chat_id):
     elif text == "test":
         send_message(CHANNEL_ID, "🛰️ Test alert working")
 
-    elif "top 5" in text:
-        send_message(CHANNEL_ID, f"""📊 PRE-BELL TOP 5
-
-{raw_text}
-
-💣 Ticking Time Bombs
-⚡ Pressure Cookers
-🚨 Breakout Alerts
-
-#Top5 #ItAintLuck""")
-
     elif any(keyword in text for keyword in BREAKOUT_KEYWORDS):
         send_message(CHANNEL_ID, f"""🚨 BREAKOUT ALERT
 
