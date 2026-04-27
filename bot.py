@@ -27,7 +27,7 @@ def get_updates(offset=None):
 
 
 def clean_ticker(ticker):
-    return "$" + ticker.replace("$", "").upper()
+    return "$" + ticker.replace("$", "").upper().strip()
 
 
 def extract_ticker(line):
@@ -38,8 +38,7 @@ def extract_ticker(line):
 
 
 def handle_top5(text):
-    global top5_watchlist
-    global ticker_states
+    global top5_watchlist, ticker_states
 
     raw = text.split(":")[-1].strip().split()
     top5_watchlist = [clean_ticker(t) for t in raw][:5]
@@ -48,9 +47,31 @@ def handle_top5(text):
     message = "📊 TOP 5 — TODAY\n\n"
     message += "\n".join(top5_watchlist)
     message += "\n\n—\n\n"
-    message += "Focus: Short Interest + Borrow Pressure + DTC\n"
-    message += "Execution: Selective\n\n"
+    message += "Focus:\nShort Interest + Borrow Pressure + DTC\n\n"
+    message += "Bias:\nLong Gamma / Squeeze Potential\n\n"
+    message += "Execution:\nSelective\n\n"
+    message += "Framework:\nPre-Squeeze → Expansion → Release\n\n"
     message += "#Top5"
+
+    send_message(CHANNEL_ID, message)
+
+
+def handle_futures(text):
+    body = text.split(":", 1)[-1].strip()
+
+    message = f"""🌙 AH / FUTURES WATCH
+
+{body}
+
+—
+
+Market Environment:
+Risk-on / neutral / risk-off context
+
+Implication:
+Broad market tone may influence squeeze follow-through
+
+#Futures"""
 
     send_message(CHANNEL_ID, message)
 
@@ -160,6 +181,10 @@ def handle_message(text, chat_id):
 
     if clean_text.lower().startswith("top 5"):
         handle_top5(clean_text)
+        return
+
+    if clean_text.lower().startswith("futures"):
+        handle_futures(clean_text)
         return
 
     for line in clean_text.split("\n"):
