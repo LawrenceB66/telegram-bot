@@ -1,23 +1,14 @@
 import requests
 import time
 import os
+import re
 
 TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = -1003667470993
 
 URL = f"https://api.telegram.org/bot{TOKEN}/"
 
-BREAKOUT_KEYWORDS = [
-    "halt",
-    "running",
-    "squeeze",
-    "spiking",
-    "volume",
-    "breaking out",
-    "exploding",
-    "rip",
-    "ripping"
-]
+top5_watchlist = []
 
 
 def send_message(chat_id, text):
@@ -34,72 +25,130 @@ def get_updates(offset=None):
     return requests.get(URL + "getUpdates", params=params).json()
 
 
-def format_alert(text):
-    lines = text.strip().split("\n")
+def clean_ticker(ticker):
+    return "$" + ticker.replace("$", "").upper()
 
-    formatted_lines = []
-    top5 = None
 
-    for line in lines:
-        line = line.strip()
+def extract_ticker(line):
+    match = re.search(r"\$?[A-Z]{1,5}", line.upper())
+    if match:
+        return clean_ticker(match.group())
+    return None
 
-        if "top 5" in line.lower():
-            tickers = line.split(":")[-1].strip().split()
-            tickers = [f"${t.replace('$', '').upper()}" for t in tickers]
-            top5 = " ".join(tickers)
-            continue
 
-        parts = line.split()
-        if len(parts) >= 2:
-            ticker = parts[0].replace("$", "").upper()
-            action = " ".join(parts[1:]).lower()
-            formatted_lines.append((f"${ticker}", action))
+def handle_top5(text):
+    global top5_watchlist
 
-    is_breakout = any(keyword in text.lower() for keyword in BREAKOUT_KEYWORDS)
+    raw = text.split(":")[-1].strip().split()
+    top5_watchlist = [clean_ticker(t) for t in raw][:5]
 
-    if is_breakout:
-        message = "🚨 BREAKOUT ALERT\n\n"
+    message = "📊 TOP 5 — TODAY\n\n"
+    message += "\n".join(top5_watchlist)
+    message += """
 
-        for ticker, action in formatted_lines:
-            message += f"""{ticker}
+—
+
+Focus: Momentum + Pressure Alignment
+Execution: Selective
+
+#Top5
+"""
+    send_message(CHANNEL_ID, message)
+
+
+def ticker_allowed(ticker):
+    return ticker in top5_watchlist
+
+
+def send_breakout(ticker):
+    send_message(CHANNEL_ID, f"""🚨 BREAKOUT ALERT
+
+{ticker}
 
 Momentum Expansion — Active
 
-• Volume accelerating
-• Pressure releasing
+Volume accelerating
+Pressure releasing
 
-#Breakout"""
-            break
+—
 
-    else:
-        message = "⚡ PRESSURE FLOW\n\n"
+Classification: Breakout
+Status: Active
+Timeframe: Intraday
 
-        for ticker, action in formatted_lines:
-            clean_action = action.capitalize()
-            message += f"{ticker} — {clean_action}\n"
+#Breakout""")
 
-        message = message.strip()
 
-    if top5:
-        message += f"\n\n🧠 Top 5:\n{top5}"
+def send_pressure(ticker):
+    send_message(CHANNEL_ID, f"""⚡ PRESSURE COOKER
 
-    return message
+{ticker}
+
+Compression building — No release yet
+
+Volume steady
+Range tightening
+
+—
+
+Classification: Pressure
+Status: Building
+Timeframe: Intraday
+
+#Pressure""")
+
+
+def send_ticking(ticker):
+    send_message(CHANNEL_ID, f"""💣 TICKING TIME BOMB
+
+{ticker}
+
+Trigger proximity — Immediate reaction zone
+
+Low DTC
+High sensitivity
+
+—
+
+Classification: Pre-Breakout
+Status: Ready
+Timeframe: Short-term
+
+#Ready""")
+
+
+def handle_signal(line):
+    ticker = extract_ticker(line)
+    if not ticker:
+        return
+
+    if not ticker_allowed(ticker):
+        print(f"Ignored {ticker}: not in Top 5")
+        return
+
+    text = line.lower()
+
+    if "running" in text or "ripping" in text or "breakout" in text:
+        send_breakout(ticker)
+
+    elif "building" in text or "pressure" in text or "watch" in text:
+        send_pressure(ticker)
+
+    elif "ready" in text or "primed" in text or "coiling" in text:
+        send_ticking(ticker)
 
 
 def handle_message(text, chat_id):
-    if text == "/start":
-        send_message(chat_id, "Bot is live 🚀")
-        send_message(CHANNEL_ID, "🚀 Connected to channel")
-
-    elif text == "test":
+    if text.lower() == "test":
         send_message(CHANNEL_ID, "⚙️ Test alert working")
+        return
 
-    elif "$" in text:
-        formatted = format_alert(text)
-        send_message(CHANNEL_ID, formatted)
+    if text.lower().startswith("top 5"):
+        handle_top5(text)
+        return
 
-    else:
-        print("Ignored:", text)
+    for line in text.split("\n"):
+        handle_signal(line.strip())
 
 
 def main():
@@ -120,7 +169,7 @@ def main():
                     chat_id = msg["chat"]["id"]
 
                     print(f"Received: {text}")
-                    handle_message(text.lower(), chat_id)
+                    handle_message(text, chat_id)
 
         time.sleep(2)
 
