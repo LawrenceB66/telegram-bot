@@ -124,5 +124,5 @@ def main():
         time.sleep(2)
 
 
-if name == "__main__":
+if __name__ == "__main__":
     main()
