@@ -16,6 +16,7 @@ def safe_request(url, params=None, retries=3):
             time.sleep(5)
     return None
 
+
 # --- CONFIG ---
 TOKEN = os.getenv("TOKEN")
 print("TOKEN LOADED:", TOKEN)
@@ -25,6 +26,11 @@ URL = f"https://api.telegram.org/bot{TOKEN}/"
 
 offset = None
 
+# --- TEST: SEND TO CHANNEL ON START ---
+safe_request(URL + "sendMessage", {
+    "chat_id": CHANNEL_ID,
+    "text": "🚨 IAL TEST ALERT — BOT IS LIVE 🚨"
+})
 
 # --- MAIN LOOP ---
 while True:
