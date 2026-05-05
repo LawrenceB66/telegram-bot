@@ -17,6 +17,7 @@ def safe_request(url, params=None, retries=3):
     return None
 
 TOKEN = os.getenv("TOKEN")
+print("TOKEN LOADED:" TOKEN)
 CHANNEL_ID = -1003667470993
 
 URL = f"https://api.telegram.org/bot{TOKEN}/"
