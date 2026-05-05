@@ -9,10 +9,12 @@ def safe_request(url, params=None, retries=3):
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            print(f"[ERROR] Attempt {attempt+1} failed: {e}")
+            if "Read timed out" in str(e):
+               print("[WAITING] No updates...")
+            else:
+                print(f"[ERROR] Attempt {attempt+1} failed: {e}")
             time.sleep(5)
     return None
-
 
 # --- CONFIG ---
 TOKEN = os.getenv("TOKEN")
