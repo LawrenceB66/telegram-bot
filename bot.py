@@ -3,6 +3,19 @@ import time
 import os
 import re
 
+def safe_request(url, params=None, retries=3):
+    for attempt in range(retries):
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        
+        except requests.exceptions.RequestException as e:
+            print(f"[ERROR] Attempt {attempt+1} failed: {e}")
+            time.sleep(2)
+
+    return None
+
 TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = -1003667470993
 
@@ -13,17 +26,28 @@ ticker_states = {}
 
 
 def send_message(chat_id, text):
-    requests.get(URL + "sendMessage", params={
+    params = {
         "chat_id": chat_id,
         "text": text
-    })
+    }
 
+    data = safe_request(URL + "sendMessage", params=params)
+
+    if data is None:
+        print("Failed to send message")
 
 def get_updates(offset=None):
     params = {"timeout": 100}
     if offset:
         params["offset"] = offset
-    return requests.get(URL + "getUpdates", params=params).json()
+
+    data = safe_request(URL + "getUpdates", params=params)
+
+    if data is None:
+        print("Failed to fetch updates")
+        return {"result": []}
+
+    return data
 
 
 def clean_ticker(ticker):
@@ -212,6 +236,7 @@ def main():
                     handle_message(text, chat_id)
 
         time.sleep(2)
+
 
 if __name__ == "__main__":
     main()
