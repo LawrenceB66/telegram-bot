@@ -52,21 +52,25 @@ def get_mock_top5():
     ]
 
 offset = None
-
 # --- MAIN LOOP ---
+has_sent = False
+
 while True:
-    top5 = get_mock_top5()
+    if not has_sent:
+        top5 = get_mock_top5()
 
-    for stock in top5:
-        send_alert(
-            stock["ticker"],
-            stock["price"],
-            stock["pct"],
-            stock["tier"],
-            stock["dtc"],
-            stock["si"],
-            stock["velocity"]
-        )
-        time.sleep(1)
+        for stock in top5:
+            send_alert(
+                stock["ticker"],
+                stock["price"],
+                stock["pct"],
+                stock["tier"],
+                stock["dtc"],
+                stock["si"],
+                stock["velocity"]
+            )
+            time.sleep(1)
 
-    time.sleep(60)
+        has_sent = True
+
+    time.sleep(30)
