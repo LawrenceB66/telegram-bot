@@ -41,8 +41,6 @@ def send_alert(ticker, price, pct, tier, dtc, si, velocity):
 
 offset = None
 
-send_alert("AMC", "1.50", "-0.66", "💣 POWDER KEG", "6.2", "38", "-0.004")
-
 # --- MAIN LOOP ---
 while True:
     params = {
