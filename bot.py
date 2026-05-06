@@ -41,8 +41,6 @@ def send_test_alert():
 
 offset = None
 
-send_test_alert()
-
 # --- MAIN LOOP ---
 while True:
     params = {
