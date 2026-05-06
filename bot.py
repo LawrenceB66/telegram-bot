@@ -37,21 +37,28 @@ def send_alert(ticker, price, pct, tier, dtc, si, velocity):
     })
 
 
-# --- LIVE PRICE FETCH (Yahoo Finance) ---
-def get_live_price(ticker):
-    url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={ticker}"
+# --- SINGLE CALL (ALL TICKERS) ---
+def get_live_batch():
+    tickers = "AMC,GME,BBBY,CVNA,UPST"
+    url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={tickers}"
+
     data = safe_request(url)
 
+    results = {}
+
     try:
-        result = data["quoteResponse"]["result"][0]
-        price = result["regularMarketPrice"]
-        pct = result["regularMarketChangePercent"]
-        return round(price, 2), round(pct, 2)
+        for item in data["quoteResponse"]["result"]:
+            results[item["symbol"]] = {
+                "price": round(item["regularMarketPrice"], 2),
+                "pct": round(item["regularMarketChangePercent"], 2)
+            }
     except:
-        return None, None
+        return {}
+
+    return results
 
 
-# --- HYBRID DATA ENGINE ---
+# --- HYBRID ENGINE ---
 def get_top5():
     base = [
         {"ticker": "AMC", "tier": "💣 POWDER KEG", "dtc": 6.2, "si": 38, "velocity": -0.004},
@@ -61,18 +68,19 @@ def get_top5():
         {"ticker": "UPST", "tier": "💣 POWDER KEG", "dtc": 5.1, "si": 29, "velocity": -0.008},
     ]
 
+    live = get_live_batch()
     results = []
 
     for stock in base:
-        price, pct = get_live_price(stock["ticker"])
+        ticker = stock["ticker"]
 
-        if price is None:
+        if ticker not in live:
             continue
 
         results.append({
-            "ticker": stock["ticker"],
-            "price": price,
-            "pct": pct,
+            "ticker": ticker,
+            "price": live[ticker]["price"],
+            "pct": live[ticker]["pct"],
             "tier": stock["tier"],
             "dtc": stock["dtc"],
             "si": stock["si"],
@@ -125,4 +133,5 @@ while True:
             )
             time.sleep(1)
 
-    time.sleep(30)
+    # 🔥 KEY FIX: slow it down
+    time.sleep(60)
