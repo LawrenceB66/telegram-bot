@@ -10,7 +10,7 @@ def safe_request(url, params=None, retries=3):
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
-            print(f"[ERROR] Attempt {attempt+1} failed: {e}")
+            print(f"[ERROR] Attempt {attempt+1}: {e}")
             time.sleep(5)
     return None
 
@@ -37,24 +37,57 @@ def send_alert(ticker, price, pct, tier, dtc, si, velocity):
     })
 
 
-# --- MOCK DATA (TEMP ENGINE) ---
-def get_mock_top5():
-    return [
-        {"ticker": "AMC", "price": "1.50", "pct": "-0.66", "tier": "💣 POWDER KEG", "dtc": "6.2", "si": "38", "velocity": "-0.004"},
-        {"ticker": "GME", "price": "24.11", "pct": "3.43", "tier": "💣 POWDER KEG", "dtc": "3.8", "si": "21", "velocity": "-0.012"},
-        {"ticker": "BBBY", "price": "0.42", "pct": "5.10", "tier": "🔥 TICKING TIME BOMB", "dtc": "1.9", "si": "47", "velocity": "0.021"},
-        {"ticker": "CVNA", "price": "88.20", "pct": "2.12", "tier": "🔥 TICKING TIME BOMB", "dtc": "2.3", "si": "31", "velocity": "0.015"},
-        {"ticker": "UPST", "price": "22.50", "pct": "-1.02", "tier": "💣 POWDER KEG", "dtc": "5.1", "si": "29", "velocity": "-0.008"},
+# --- LIVE PRICE FETCH (Yahoo Finance) ---
+def get_live_price(ticker):
+    url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={ticker}"
+    data = safe_request(url)
+
+    try:
+        result = data["quoteResponse"]["result"][0]
+        price = result["regularMarketPrice"]
+        pct = result["regularMarketChangePercent"]
+        return round(price, 2), round(pct, 2)
+    except:
+        return None, None
+
+
+# --- HYBRID DATA ENGINE ---
+def get_top5():
+    base = [
+        {"ticker": "AMC", "tier": "💣 POWDER KEG", "dtc": 6.2, "si": 38, "velocity": -0.004},
+        {"ticker": "GME", "tier": "💣 POWDER KEG", "dtc": 3.8, "si": 21, "velocity": -0.012},
+        {"ticker": "BBBY", "tier": "🔥 TICKING TIME BOMB", "dtc": 1.9, "si": 47, "velocity": 0.021},
+        {"ticker": "CVNA", "tier": "🔥 TICKING TIME BOMB", "dtc": 2.3, "si": 31, "velocity": 0.015},
+        {"ticker": "UPST", "tier": "💣 POWDER KEG", "dtc": 5.1, "si": 29, "velocity": -0.008},
     ]
 
+    results = []
 
-# --- STATE TRACKING ENGINE ---
+    for stock in base:
+        price, pct = get_live_price(stock["ticker"])
+
+        if price is None:
+            continue
+
+        results.append({
+            "ticker": stock["ticker"],
+            "price": price,
+            "pct": pct,
+            "tier": stock["tier"],
+            "dtc": stock["dtc"],
+            "si": stock["si"],
+            "velocity": stock["velocity"]
+        })
+
+    return results
+
+
+# --- STATE ENGINE ---
 last_sent = {}
 
 def should_alert(stock):
     ticker = stock["ticker"]
 
-    # First time seeing ticker → send
     if ticker not in last_sent:
         last_sent[ticker] = stock
         return True
@@ -63,8 +96,8 @@ def should_alert(stock):
 
     try:
         price_changed = stock["price"] != prev["price"]
-        pct_jump = abs(float(stock["pct"]) - float(prev["pct"])) >= 1.0
-        velocity_shift = abs(float(stock["velocity"]) - float(prev["velocity"])) >= 0.01
+        pct_jump = abs(stock["pct"] - prev["pct"]) >= 0.5
+        velocity_shift = abs(stock["velocity"] - prev["velocity"]) >= 0.01
     except:
         return False
 
@@ -77,7 +110,7 @@ def should_alert(stock):
 
 # --- MAIN LOOP ---
 while True:
-    top5 = get_mock_top5()
+    top5 = get_top5()
 
     for stock in top5:
         if should_alert(stock):
