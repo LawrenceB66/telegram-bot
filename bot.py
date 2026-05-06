@@ -24,14 +24,14 @@ print("TOKEN LOADED:", TOKEN)
 CHANNEL_ID = -1003667470993
 URL = f"https://api.telegram.org/bot{TOKEN}/"
 
-# --- ALERT FUNCTION ---
-def send_test_alert():
+# --- ALERT SENDER ---
+def send_alert(ticker, price, pct, tier, dtc, si, velocity):
     message = (
-        "$AMC\n"
-        "Price 1.50 • -0.66%\n\n"
-        "💣 POWDER KEG\n\n"
-        "DTC: 6.2 • SI: 38%\n"
-        "Velocity: -0.004"
+        f"${ticker}\n"
+        f"Price {price} • {pct}%\n\n"
+        f"{tier}\n\n"
+        f"DTC: {dtc} • SI: {si}%\n"
+        f"Velocity: {velocity}"
     )
 
     safe_request(URL + "sendMessage", {
@@ -40,6 +40,8 @@ def send_test_alert():
     })
 
 offset = None
+
+send_alert("AMC", "1.50", "-0.66", "💣 POWDER KEG", "6.2", "38", "-0.004")
 
 # --- MAIN LOOP ---
 while True:
