@@ -5,6 +5,7 @@ import os
 # --- CONFIG ---
 TOKEN = os.getenv("TOKEN")
 FMP_API_KEY = os.getenv("FMP_API_KEY")
+print("FMP KEY:", FMP_API_KEY)
 
 CHANNEL_ID = -1003667470993
 TG_URL = f"https://api.telegram.org/bot{TOKEN}/"
