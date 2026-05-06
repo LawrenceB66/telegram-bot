@@ -5,7 +5,6 @@ import os
 # --- CONFIG ---
 TOKEN = os.getenv("TOKEN")
 FMP_API_KEY = os.getenv("FMP_API_KEY")
-print("FMP KEY:", FMP_API_KEY)
 
 CHANNEL_ID = -1003667470993
 TG_URL = f"https://api.telegram.org/bot{TOKEN}/"
@@ -19,7 +18,7 @@ def safe_request(url, params=None, retries=3):
             return r.json()
         except requests.exceptions.RequestException as e:
             print(f"[ERROR] Attempt {attempt+1}: {e}")
-            time.sleep(3)
+            time.sleep(2)
     return None
 
 # --- TELEGRAM SEND ---
@@ -31,13 +30,23 @@ def send_alert(text):
     }
     safe_request(url, params=payload)
 
-# --- FETCH REAL DATA (FMP) ---
+# --- FETCH REAL DATA (FMP - SAFE FOR FREE PLAN) ---
 def fetch_data():
-    symbols = "AMC,GME,BBBY,CVNA,UPST"
-    url = f"https://financialmodelingprep.com/api/v3/quote-short/{symbols}?apikey={FMP_API_KEY}"
-    return safe_request(url)
+    symbols = ["AMC", "GME", "BBBY", "CVNA", "UPST"]
+    results = []
 
-# --- BUILD ALERT ---
+    for symbol in symbols:
+        url = f"https://financialmodelingprep.com/api/v3/quote-short/{symbol}?apikey={FMP_API_KEY}"
+        data = safe_request(url)
+
+        if data and isinstance(data, list):
+            results.extend(data)
+
+        time.sleep(1)  # prevent rate limit
+
+    return results
+
+# --- BUILD MESSAGE ---
 def build_message(stock):
     ticker = stock.get("symbol", "N/A")
     price = stock.get("price", 0)
@@ -61,7 +70,7 @@ def main():
             for stock in data:
                 msg = build_message(stock)
                 send_alert(msg)
-                time.sleep(1)  # prevent spam
+                time.sleep(1)  # prevent spam burst
 
         time.sleep(30)  # refresh loop
 
