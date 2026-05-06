@@ -25,6 +25,7 @@ CHANNEL_ID = -1003667470993
 URL = f"https://api.telegram.org/bot{TOKEN}/"
 
 # --- ALERT SENDER ---
+# --- ALERT SENDER ---
 def send_alert(ticker, price, pct, tier, dtc, si, velocity):
     message = (
         f"${ticker}\n"
@@ -39,31 +40,33 @@ def send_alert(ticker, price, pct, tier, dtc, si, velocity):
         "text": message
     })
 
+
+# --- MOCK DATA (TEMPORARY ENGINE) ---
+def get_mock_top5():
+    return [
+        {"ticker": "AMC", "price": "1.50", "pct": "-0.66", "tier": "💣 POWDER KEG", "dtc": "6.2", "si": "38", "velocity": "-0.004"},
+        {"ticker": "GME", "price": "24.11", "pct": "3.43", "tier": "💣 POWDER KEG", "dtc": "3.8", "si": "21", "velocity": "-0.012"},
+        {"ticker": "BBBY", "price": "0.42", "pct": "5.10", "tier": "🔥 TICKING TIME BOMB", "dtc": "1.9", "si": "47", "velocity": "0.021"},
+        {"ticker": "CVNA", "price": "88.20", "pct": "2.12", "tier": "🔥 TICKING TIME BOMB", "dtc": "2.3", "si": "31", "velocity": "0.015"},
+        {"ticker": "UPST", "price": "22.50", "pct": "-1.02", "tier": "💣 POWDER KEG", "dtc": "5.1", "si": "29", "velocity": "-0.008"},
+    ]
+
 offset = None
 
 # --- MAIN LOOP ---
 while True:
-    params = {
-        "timeout": 30,
-        "offset": offset
-    }
+    top5 = get_mock_top5()
 
-    data = safe_request(URL + "getUpdates", params)
+    for stock in top5:
+        send_alert(
+            stock["ticker"],
+            stock["price"],
+            stock["pct"],
+            stock["tier"],
+            stock["dtc"],
+            stock["si"],
+            stock["velocity"]
+        )
+        time.sleep(1)
 
-    if data and data.get("result"):
-        for update in data["result"]:
-            offset = update["update_id"] + 1
-
-            print("New update received")
-
-            # OPTIONAL: echo message (for testing)
-            if "message" in update and "text" in update["message"]:
-                chat_id = update["message"]["chat"]["id"]
-                text = update["message"]["text"]
-
-                safe_request(URL + "sendMessage", {
-                    "chat_id": chat_id,
-                    "text": f"Echo: {text}"
-                })
-
-    time.sleep(1)
+    time.sleep(60)
