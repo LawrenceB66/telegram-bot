@@ -9,6 +9,7 @@ ALPHA_API_KEY = os.getenv("ALPHA_API_KEY")
 CHANNEL_ID = -1003667470993
 TG_URL = f"https://api.telegram.org/bot{TOKEN}/"
 
+
 # --- SAFE REQUEST ---
 def safe_request(url, params=None, retries=3):
     for attempt in range(retries):
@@ -21,6 +22,7 @@ def safe_request(url, params=None, retries=3):
             time.sleep(2)
     return None
 
+
 # --- TELEGRAM SEND ---
 def send_alert(text):
     url = TG_URL + "sendMessage"
@@ -30,27 +32,36 @@ def send_alert(text):
     }
     safe_request(url, params=payload)
 
-# --- FETCH REAL DATA (FMP - SAFE FOR FREE PLAN) ---
+
+# --- FETCH DATA (ALPHA VANTAGE) ---
 def fetch_data():
-    symbols = ["AMC", "GME", "BBBY", "CVNA", "UPST"]
+    symbols = ["AMC", "GME", "CVNA", "UPST"]
+
     results = []
 
     for symbol in symbols:
-        url = f"https://financialmodelingprep.com/api/v3/profile/AAPL?apikey={FMP_API_KEY}"
+        url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={ALPHA_API_KEY}"
         data = safe_request(url)
 
-        if data and isinstance(data, list):
-            results.extend(data)
+        if data and "Global Quote" in data:
+            quote = data["Global Quote"]
 
-        time.sleep(1)  # prevent rate limit
+            results.append({
+                "symbol": quote.get("01. symbol", "N/A"),
+                "price": quote.get("05. price", "0"),
+                "volume": quote.get("06. volume", "0")
+            })
+
+        time.sleep(12)  # REQUIRED for free plan rate limit
 
     return results
+
 
 # --- BUILD MESSAGE ---
 def build_message(stock):
     ticker = stock.get("symbol", "N/A")
-    price = stock.get("price", 0)
-    volume = stock.get("volume", 0)
+    price = stock.get("price", "0")
+    volume = stock.get("volume", "0")
 
     msg = (
         f"${ticker}\n"
@@ -58,6 +69,7 @@ def build_message(stock):
         f"Volume: {volume}"
     )
     return msg
+
 
 # --- MAIN LOOP ---
 def main():
@@ -70,9 +82,10 @@ def main():
             for stock in data:
                 msg = build_message(stock)
                 send_alert(msg)
-                time.sleep(1)  # prevent spam burst
+                time.sleep(1)
 
-        time.sleep(30)  # refresh loop
+        time.sleep(30)
+
 
 # --- RUN ---
 if __name__ == "__main__":
