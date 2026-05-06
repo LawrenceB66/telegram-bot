@@ -65,5 +65,5 @@ def main():
         time.sleep(30)  # refresh loop
 
 # --- RUN ---
-if name == "__main__":
+if __name__ == "__main__":
     main()
