@@ -38,7 +38,7 @@ def send_alert(ticker, price, pct, tier, dtc, si, velocity):
 
 # --- REAL DATA (FMP) ---
 def get_real_top5():
-    url = f"https://financialmodelingprep.com/api/v3/quote/AMC,GME,BBBY,CVNA,UPST?apikey={FMP_API_KEY}"
+    url = f"https://financialmodelingprep.com/api/v3/quote-short/{symbol}?apikey={FMP_API_KEY}"
     data = safe_request(url)
 
     if not data:
