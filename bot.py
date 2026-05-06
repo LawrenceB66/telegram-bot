@@ -36,7 +36,7 @@ def fetch_data():
     results = []
 
     for symbol in symbols:
-        url = f"https://financialmodelingprep.com/api/v3/quote-short/{symbol}?apikey={FMP_API_KEY}"
+        url = f"https://financialmodelingprep.com/api/v3/stock/list?apikey={FMP_API_KEY}"
         data = safe_request(url)
 
         if data and isinstance(data, list):
