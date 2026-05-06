@@ -10,7 +10,7 @@ def safe_request(url, params=None, retries=3):
             return response.json()
         except requests.exceptions.RequestException as e:
             if "Read timed out" in str(e):
-               print("[WAITING] No updates...")
+                print("[WAITING] No updates...")
             else:
                 print(f"[ERROR] Attempt {attempt+1} failed: {e}")
             time.sleep(5)
@@ -24,7 +24,7 @@ print("TOKEN LOADED:", TOKEN)
 CHANNEL_ID = -1003667470993
 URL = f"https://api.telegram.org/bot{TOKEN}/"
 
-# --- ALERT SENDER ---
+
 # --- ALERT SENDER ---
 def send_alert(ticker, price, pct, tier, dtc, si, velocity):
     message = (
@@ -51,15 +51,38 @@ def get_mock_top5():
         {"ticker": "UPST", "price": "22.50", "pct": "-1.02", "tier": "💣 POWDER KEG", "dtc": "5.1", "si": "29", "velocity": "-0.008"},
     ]
 
-offset = None
+
+# --- STATE ENGINE ---
+last_sent = {}
+
+def should_alert(stock):
+    ticker = stock["ticker"]
+
+    if ticker not in last_sent:
+        last_sent[ticker] = stock
+        return True
+
+    prev = last_sent[ticker]
+
+    try:
+        price_changed = stock["price"] != prev["price"]
+        pct_jump = abs(float(stock["pct"]) - float(prev["pct"])) >= 1.0
+        velocity_shift = abs(float(stock["velocity"]) - float(prev["velocity"])) >= 0.01
+    except:
+        return False
+
+    if price_changed or pct_jump or velocity_shift:
+        last_sent[ticker] = stock
+        return True
+
+    return False
+
+
 # --- MAIN LOOP ---
-has_sent = False
-
 while True:
-    if not has_sent:
-        top5 = get_mock_top5()
+    top5 = get_mock_top5()
 
-        for stock in top5:
+    for stock in top5:
             send_alert(
                 stock["ticker"],
                 stock["price"],
@@ -70,7 +93,5 @@ while True:
                 stock["velocity"]
             )
             time.sleep(1)
-
-        has_sent = True
 
     time.sleep(30)
