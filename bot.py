@@ -52,12 +52,12 @@ def fetch_data():
                 "volume": quote.get("06. volume", "0")
             })
 
-        time.sleep(12)  # REQUIRED for free plan rate limit
+        time.sleep(12)  # Alpha Vantage free limit
 
     return results
 
 
-# --- BUILD MESSAGE ---
+# --- BUILD MESSAGE (UPDATED STYLE) ---
 def build_message(stock):
     ticker = stock.get("symbol", "N/A")
     price = stock.get("price", "0")
@@ -65,9 +65,10 @@ def build_message(stock):
 
     msg = (
         f"${ticker}\n"
-        f"Price: {price}\n"
-        f"Volume: {volume}"
+        f"Price: ${price}\n"
+        f"Volume: {int(volume):,}"
     )
+
     return msg
 
 
