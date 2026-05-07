@@ -9,9 +9,6 @@ ALPHA_API_KEY = os.getenv("ALPHA_API_KEY")
 CHANNEL_ID = -1003667470993
 TG_URL = f"https://api.telegram.org/bot{TOKEN}/"
 
-# --- MEMORY (prevents spam) ---
-last_prices = {}
-
 # --- SAFE REQUEST ---
 def safe_request(url, params=None, retries=3):
     for attempt in range(retries):
@@ -33,7 +30,7 @@ def send_alert(text):
     }
     safe_request(url, params=payload)
 
-# --- FETCH DATA ---
+# --- FETCH DATA (ALPHA VANTAGE) ---
 def fetch_data():
     symbols = ["AMC", "GME", "CVNA", "UPST"]
     results = []
@@ -46,56 +43,51 @@ def fetch_data():
             quote = data["Global Quote"]
 
             results.append({
-                "symbol": quote.get("01. symbol", "N/A"),
+                "symbol": quote.get("01. symbol"),
                 "price": float(quote.get("05. price", 0)),
-                "volume": quote.get("06. volume", "0")
+                "volume": int(float(quote.get("06. volume", 0)))
             })
 
-        time.sleep(12)  # Alpha free plan limit
+        time.sleep(12)  # Alpha free tier safety
 
     return results
 
 # --- BUILD MESSAGE ---
 def build_message(stock):
-    ticker = stock["symbol"]
-    price = stock["price"]
-    volume = stock["volume"]
+    ticker = stock.get("symbol", "N/A")
+    price = stock.get("price", 0)
+    volume = stock.get("volume", 0)
 
     msg = (
         f"${ticker}\n"
         f"Price: ${price:.2f}\n"
-        f"Volume: {int(volume):,}"
+        f"Volume: {volume:,}"
     )
-
     return msg
 
-# --- MAIN LOOP ---
+# --- MAIN LOOP (ANTI-SPAM) ---
 def main():
     print("🚀 BOT STARTED")
+
+    last_sent = {}
 
     while True:
         data = fetch_data()
 
         if data:
             for stock in data:
-                ticker = stock["symbol"]
-                price = stock["price"]
+                ticker = stock.get("symbol")
+                price = stock.get("price")
 
-                # --- SPAM FILTER ---
-                if ticker in last_prices:
-                    if price == last_prices[ticker]:
-                        continue  # skip if no change
+                # Only send if price changed
+                if ticker not in last_sent or last_sent[ticker] != price:
+                    msg = build_message(stock)
+                    send_alert(msg)
+                    last_sent[ticker] = price
+                    time.sleep(1)
 
-                # --- UPDATE MEMORY ---
-                last_prices[ticker] = price
+        time.sleep(60)
 
-                # --- SEND ALERT ---
-                msg = build_message(stock)
-                send_alert(msg)
-
-                time.sleep(1)
-
-        time.sleep(30)
 
 # --- RUN ---
 if __name__ == "__main__":
