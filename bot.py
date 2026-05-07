@@ -17,44 +17,46 @@ def send_message(message):
             "chat_id": CHAT_ID,
             "text": message
         })
-        print("Telegram response:", res.text)
+        print("📤 Telegram response:", res.text)
     except Exception as e:
-        print("Send error:", e)
+        print("❌ Send error:", e)
 
 
 def fetch_data(symbol):
     try:
-        url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbol}"
+        url = f"https://financialmodelingprep.com/api/v3/quote/{symbol}?apikey=demo"
         res = requests.get(url)
+
+        # 🔥 SEE EXACT RESPONSE
+        print(f"\n🌐 RAW API ({symbol}):", res.text)
+
         data = res.json()
 
-        result = data["quoteResponse"]["result"]
+        if isinstance(data, list) and len(data) > 0:
+            stock = data[0]
 
-        if len(result) > 0:
-            stock = result[0]
+            price = stock.get("price", None)
+            volume = stock.get("volume", None)
 
-            price = stock.get("regularMarketPrice", None)
-            volume = stock.get("regularMarketVolume", None)
+            print(f"✅ Parsed ({symbol}) -> price: {price}, volume: {volume}")
 
             return price, volume
 
     except Exception as e:
-        print("Fetch error:", e)
+        print(f"❌ Fetch error ({symbol}):", e)
 
+    print(f"⚠️ No data returned for {symbol}")
     return None, None
 
 
 # 🔥 MAIN LOOP
-print("Bot started...")
+print("🚀 Bot started...\n")
 
 while True:
-    print("Running cycle...")
+    print("🔁 Running cycle...\n")
 
     for ticker in symbols:
         price, volume = fetch_data(ticker)
-
-        # 🔍 DEBUG (shows what's happening)
-        print(f"{ticker} -> price: {price}, volume: {volume}")
 
         if price is not None and volume is not None:
             price_fmt = f"{price:.2f}"
@@ -62,10 +64,13 @@ while True:
 
             msg = f"${ticker}\nPrice: {price_fmt}\nVolume: {volume_fmt}"
 
-            print("Sending message:")
+            print("\n📨 Sending message:")
             print(msg)
 
             send_message(msg)
 
-    print("Cycle complete. Sleeping...\n")
+        else:
+            print(f"⛔ Skipping {ticker} (no data)\n")
+
+    print("⏸️ Cycle complete. Sleeping...\n")
     time.sleep(60)
