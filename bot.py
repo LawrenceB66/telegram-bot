@@ -10,6 +10,7 @@ BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 # Your watchlist
 symbols = ["AMC", "GME", "CVNA", "UPST"]
 
+
 def send_message(message):
     try:
         res = requests.post(BASE_URL, data={
@@ -20,15 +21,20 @@ def send_message(message):
     except Exception as e:
         print("Send error:", e)
 
+
 def fetch_data(symbol):
     try:
-        url = f"https://financialmodelingprep.com/api/v3/quote/{symbol}?apikey=demo"
+        url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbol}"
         res = requests.get(url)
         data = res.json()
 
-        if isinstance(data, list) and len(data) > 0:
-            price = data[0].get("price", None)
-            volume = data[0].get("volume", None)
+        result = data["quoteResponse"]["result"]
+
+        if len(result) > 0:
+            stock = result[0]
+
+            price = stock.get("regularMarketPrice", None)
+            volume = stock.get("regularMarketVolume", None)
 
             return price, volume
 
@@ -47,7 +53,7 @@ while True:
     for ticker in symbols:
         price, volume = fetch_data(ticker)
 
-        # 🔍 DEBUG LINE (CRITICAL)
+        # 🔍 DEBUG (shows what's happening)
         print(f"{ticker} -> price: {price}, volume: {volume}")
 
         if price is not None and volume is not None:
