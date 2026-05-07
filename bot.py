@@ -2,93 +2,95 @@ import requests
 import time
 import os
 
-# --- CONFIG ---
 TOKEN = os.getenv("TOKEN")
-ALPHA_API_KEY = os.getenv("ALPHA_API_KEY")
+CHAT_ID = os.getenv("CHAT_ID")
 
-CHANNEL_ID = -1003667470993
-TG_URL = f"https://api.telegram.org/bot{TOKEN}/"
+# Your watchlist
+SYMBOLS = ["AMC", "GME", "CVNA", "UPST"]
 
-# --- SAFE REQUEST ---
-def safe_request(url, params=None, retries=3):
-    for attempt in range(retries):
-        try:
-            r = requests.get(url, params=params, timeout=10)
-            r.raise_for_status()
-            return r.json()
-        except requests.exceptions.RequestException as e:
-            print(f"[ERROR] Attempt {attempt+1}: {e}")
-            time.sleep(2)
-    return None
+# Track last sent states (prevents spam)
+last_states = {}
 
-# --- TELEGRAM SEND ---
-def send_alert(text):
-    url = TG_URL + "sendMessage"
-    payload = {
-        "chat_id": CHANNEL_ID,
-        "text": text
+# Track previous prices for movement detection
+previous_prices = {}
+
+def send_telegram(message):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    data = {
+        "chat_id": CHAT_ID,
+        "text": message
     }
-    safe_request(url, params=payload)
+    requests.post(url, data=data)
 
-# --- FETCH DATA (ALPHA VANTAGE) ---
+def format_price(price):
+    return f"{price:.2f}"
+
+def classify(symbol, price, volume):
+    prev_price = previous_prices.get(symbol, price)
+    price_change = (price - prev_price) / prev_price if prev_price != 0 else 0
+
+    # Basic thresholds (can tune later)
+    if abs(price_change) > 0.03:
+        return "⚡️ Movers"
+    elif abs(price_change) > 0.015:
+        return "💣 Time Bomb"
+    else:
+        return "🔥 Pressure"
+
 def fetch_data():
-    symbols = ["AMC", "GME", "CVNA", "UPST"]
     results = []
 
-    for symbol in symbols:
-        url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={ALPHA_API_KEY}"
-        data = safe_request(url)
+    for symbol in SYMBOLS:
+        try:
+            url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={os.getenv('ALPHA_API_KEY')}"
+            response = requests.get(url)
+            data = response.json()
 
-        if data and "Global Quote" in data:
-            quote = data["Global Quote"]
+            if "Global Quote" in data:
+                quote = data["Global Quote"]
 
-            results.append({
-                "symbol": quote.get("01. symbol"),
-                "price": float(quote.get("05. price", 0)),
-                "volume": int(float(quote.get("06. volume", 0)))
-            })
+                price = float(quote["05. price"])
+                volume = int(quote["06. volume"])
 
-        time.sleep(12)  # Alpha free tier safety
+                results.append({
+                    "symbol": symbol,
+                    "price": price,
+                    "volume": volume
+                })
+
+        except Exception as e:
+            print(f"Error fetching {symbol}: {e}")
 
     return results
 
-# --- BUILD MESSAGE ---
-def build_message(stock):
-    ticker = stock.get("symbol", "N/A")
-    price = stock.get("price", 0)
-    volume = stock.get("volume", 0)
-
-    msg = (
-        f"${ticker}\n"
-        f"Price: ${price:.2f}\n"
-        f"Volume: {volume:,}"
-    )
-    return msg
-
-# --- MAIN LOOP (ANTI-SPAM) ---
-def main():
-    print("🚀 BOT STARTED")
-
-    last_sent = {}
-
+def run():
     while True:
         data = fetch_data()
 
-        if data:
-            for stock in data:
-                ticker = stock.get("symbol")
-                price = stock.get("price")
+        for item in data:
+            symbol = item["symbol"]
+            price = item["price"]
+            volume = item["volume"]
 
-                # Only send if price changed
-                if ticker not in last_sent or last_sent[ticker] != price:
-                    msg = build_message(stock)
-                    send_alert(msg)
-                    last_sent[ticker] = price
-                    time.sleep(1)
+            classification = classify(symbol, price, volume)
 
-        time.sleep(60)
+            # Prevent duplicate spam
+            if last_states.get(symbol) == classification:
+                continue
 
+            last_states[symbol] = classification
+            previous_prices[symbol] = price
 
-# --- RUN ---
+            message = (
+                f"${symbol}\n\n"
+                f"Price: ${format_price(price)}\n"
+                f"Volume: {volume:,}\n\n"
+                f"{classification}"
+            )
+
+            send_telegram(message)
+
+        time.sleep(60)  # 1-minute loop
+
 if __name__ == "__main__":
-    main()
+    run()
