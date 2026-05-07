@@ -12,10 +12,11 @@ symbols = ["AMC", "GME", "CVNA", "UPST"]
 
 def send_message(message):
     try:
-        requests.post(BASE_URL, data={
+        res = requests.post(BASE_URL, data={
             "chat_id": CHAT_ID,
             "text": message
         })
+        print("Telegram response:", res.text)
     except Exception as e:
         print("Send error:", e)
 
@@ -26,8 +27,8 @@ def fetch_data(symbol):
         data = res.json()
 
         if isinstance(data, list) and len(data) > 0:
-            price = data[0].get("price", 0)
-            volume = data[0].get("volume", 0)
+            price = data[0].get("price", None)
+            volume = data[0].get("volume", None)
 
             return price, volume
 
@@ -37,7 +38,7 @@ def fetch_data(symbol):
     return None, None
 
 
-# 🔥 MAIN LOOP (THIS WAS MISSING)
+# 🔥 MAIN LOOP
 print("Bot started...")
 
 while True:
@@ -46,14 +47,18 @@ while True:
     for ticker in symbols:
         price, volume = fetch_data(ticker)
 
-        if price and volume:
-            # Clean formatting (no ugly decimals)
+        # 🔍 DEBUG LINE (CRITICAL)
+        print(f"{ticker} -> price: {price}, volume: {volume}")
+
+        if price is not None and volume is not None:
             price_fmt = f"{price:.2f}"
             volume_fmt = f"{int(volume):,}"
 
             msg = f"${ticker}\nPrice: {price_fmt}\nVolume: {volume_fmt}"
 
+            print("Sending message:")
             print(msg)
+
             send_message(msg)
 
     print("Cycle complete. Sleeping...\n")
