@@ -1,3 +1,5 @@
+print("🔥🔥🔥 THIS IS THE NEW FINNHUB VERSION 🔥🔥🔥")
+
 import requests
 import time
 import os
