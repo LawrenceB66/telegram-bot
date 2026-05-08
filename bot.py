@@ -1,8 +1,8 @@
+print("🔥🔥🔥 FINAL CONTROLLED VERSION 🔥🔥🔥")
+
 import requests
 import time
 import os
-
-print("🚀 STATE ENGINE ACTIVE 🚀")
 
 # =========================
 # ENV VARIABLES
@@ -19,12 +19,12 @@ BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 symbols = ["AMC", "GME", "CVNA", "UPST"]
 
 # =========================
-# STATE MEMORY
+# STATE MEMORY (in-session)
 # =========================
 last_prices = {}
 
 # =========================
-# SEND MESSAGE
+# TELEGRAM SEND
 # =========================
 def send_message(message):
     try:
@@ -33,17 +33,16 @@ def send_message(message):
             "text": message
         })
     except Exception as e:
-        print("Send error:", e)
+        print("Telegram error:", e)
 
 # =========================
-# FETCH PRICE
+# GET PRICE (FINNHUB)
 # =========================
 def get_price(symbol):
-    url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
     try:
+        url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
         res = requests.get(url).json()
-        price = res.get("c")
-        return price
+        return res.get("c")  # current price
     except:
         return None
 
@@ -51,34 +50,49 @@ def get_price(symbol):
 # MAIN LOOP
 # =========================
 while True:
-    print("\n🔁 New cycle...")
+    print("\n🔄 New cycle...")
 
     for ticker in symbols:
         price = get_price(ticker)
 
         if price is None:
+            print(f"{ticker} price fetch failed")
             continue
 
-        last_price = last_prices.get(ticker)
-
-        # 🔥 STATE ENGINE LOGIC
-        if last_price is None:
-            # First time seeing it → store only (no send)
+        # FIRST TIME SEEING TICKER
+        if ticker not in last_prices:
             last_prices[ticker] = price
             print(f"{ticker} initialized at {price}")
+            continue
 
-        elif price != last_price:
-            # Price changed → SEND ALERT
-            msg = f"${ticker}\nPrice: {price:.2f}"
+        last_price = last_prices[ticker]
+
+        # NO CHANGE
+        if price == last_price:
+            print(f"{ticker} no change")
+            continue
+
+        # % CHANGE CALC
+        percent_change = ((price - last_price) / last_price) * 100
+
+        # ONLY TRIGGER IF >= 1% MOVE
+        if abs(percent_change) >= 1:
+
+            msg = (
+                f"${ticker}\n"
+                f"Price: {price:.2f}\n"
+                f"Move: {percent_change:.2f}%"
+            )
+
             send_message(msg)
 
-            print(f"{ticker} moved: {last_price} → {price}")
+            print(f"{ticker} moved: {last_price} → {price} ({percent_change:.2f}%)")
 
-            # Update memory
+            # UPDATE STATE AFTER ALERT
             last_prices[ticker] = price
 
         else:
-            print(f"{ticker} no change")
+            print(f"{ticker} small move: {percent_change:.2f}% (ignored)")
 
     print("😴 Sleeping...\n")
     time.sleep(30)
