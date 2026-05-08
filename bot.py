@@ -1,3 +1,4 @@
+print("🚨 DEPLOY VERSION: CLEAN V2 🚨")
 print("🔥🔥🔥 THIS IS THE FINAL WORKING VERSION 🔥🔥🔥")
 
 import requests
