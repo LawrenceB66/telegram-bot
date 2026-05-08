@@ -1,33 +1,39 @@
-print("🔥 REDEPLOY TRIGGER 🔥")
-
-print("🔥🔥🔥 THIS IS THE NEW FINNHUB VERSION 🔥🔥🔥")
+print("🔥🔥🔥 THIS IS THE FINAL WORKING VERSION 🔥🔥🔥")
 
 import requests
 import time
 import os
 
+# =========================
 # ENV VARIABLES
+# =========================
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
+# =========================
 # WATCHLIST
+# =========================
 symbols = ["AMC", "GME", "CVNA", "UPST"]
 
-# SEND MESSAGE
+# =========================
+# TELEGRAM SEND
+# =========================
 def send_message(message):
     try:
         res = requests.post(BASE_URL, data={
             "chat_id": CHAT_ID,
             "text": message
         })
-        print("📤 Telegram response:", res.text)
+        print("📨 Telegram response:", res.text)
     except Exception as e:
         print("❌ Send error:", e)
 
-# FETCH DATA FROM FINNHUB
+# =========================
+# FETCH DATA (FINNHUB)
+# =========================
 def fetch_data(symbol):
     try:
         url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
@@ -37,36 +43,45 @@ def fetch_data(symbol):
         print(f"🌐 Finnhub RAW ({symbol}):", data)
 
         price = data.get("c")
+        volume = data.get("v")
 
         if price is not None:
-            print(f"✅ Parsed ({symbol}) -> price: {price}")
-            return price
+            print(f"✅ Parsed ({symbol}) -> price: {price}, volume: {volume}")
+            return price, volume
 
     except Exception as e:
         print("❌ Fetch error:", e)
 
-    print(f"⚠️ No data returned for {symbol}")
-    return None
+    print(f"⚠️ No valid data for {symbol}")
+    return None, None
 
 
+# =========================
+# STARTUP MESSAGE
+# =========================
 print("🚀 Bot started...")
-
-# TEST MESSAGE (CONFIRM BOT WORKS)
 send_message("🚀 TEST MESSAGE — BOT IS LIVE")
 
+
+# =========================
 # MAIN LOOP
+# =========================
 while True:
-    print("\n🔁 Running cycle...\n")
+    print("\n🔄 Running cycle...\n")
 
     for ticker in symbols:
-        price = fetch_data(ticker)
+        price, volume = fetch_data(ticker)
 
         if price is not None:
             msg = f"${ticker}\nPrice: {price:.2f}"
+
+            if volume is not None:
+                msg += f"\nVolume: {int(volume):,}"
+
             print("📨 Sending message:\n", msg)
             send_message(msg)
         else:
-            print(f"❌ Skipping {ticker} (no data)")
+            print(f"❌ Skipping {ticker} (no price)")
 
     print("\n✅ Cycle complete. Sleeping...\n")
     time.sleep(60)
