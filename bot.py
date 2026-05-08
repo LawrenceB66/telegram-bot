@@ -1,9 +1,8 @@
-print("🚨 DEPLOY VERSION: CLEAN V2 🚨")
-print("🔥🔥🔥 THIS IS THE FINAL WORKING VERSION 🔥🔥🔥")
-
 import requests
 import time
 import os
+
+print("🚀 STATE ENGINE ACTIVE 🚀")
 
 # =========================
 # ENV VARIABLES
@@ -20,69 +19,66 @@ BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 symbols = ["AMC", "GME", "CVNA", "UPST"]
 
 # =========================
-# TELEGRAM SEND
+# STATE MEMORY
+# =========================
+last_prices = {}
+
+# =========================
+# SEND MESSAGE
 # =========================
 def send_message(message):
     try:
-        res = requests.post(BASE_URL, data={
+        requests.post(BASE_URL, data={
             "chat_id": CHAT_ID,
             "text": message
         })
-        print("📨 Telegram response:", res.text)
     except Exception as e:
-        print("❌ Send error:", e)
+        print("Send error:", e)
 
 # =========================
-# FETCH DATA (FINNHUB)
+# FETCH PRICE
 # =========================
-def fetch_data(symbol):
+def get_price(symbol):
+    url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
     try:
-        url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
-        res = requests.get(url)
-        data = res.json()
-
-        print(f"🌐 Finnhub RAW ({symbol}):", data)
-
-        price = data.get("c")
-        volume = data.get("v")
-
-        if price is not None:
-            print(f"✅ Parsed ({symbol}) -> price: {price}, volume: {volume}")
-            return price, volume
-
-    except Exception as e:
-        print("❌ Fetch error:", e)
-
-    print(f"⚠️ No valid data for {symbol}")
-    return None, None
-
-
-# =========================
-# STARTUP MESSAGE
-# =========================
-print("🚀 Bot started...")
-send_message("🚀 TEST MESSAGE — BOT IS LIVE")
-
+        res = requests.get(url).json()
+        price = res.get("c")
+        return price
+    except:
+        return None
 
 # =========================
 # MAIN LOOP
 # =========================
 while True:
-    print("\n🔄 Running cycle...\n")
+    print("\n🔁 New cycle...")
 
     for ticker in symbols:
-        price, volume = fetch_data(ticker)
+        price = get_price(ticker)
 
-        if price is not None:
+        if price is None:
+            continue
+
+        last_price = last_prices.get(ticker)
+
+        # 🔥 STATE ENGINE LOGIC
+        if last_price is None:
+            # First time seeing it → store only (no send)
+            last_prices[ticker] = price
+            print(f"{ticker} initialized at {price}")
+
+        elif price != last_price:
+            # Price changed → SEND ALERT
             msg = f"${ticker}\nPrice: {price:.2f}"
-
-            if volume is not None:
-                msg += f"\nVolume: {int(volume):,}"
-
-            print("📨 Sending message:\n", msg)
             send_message(msg)
-        else:
-            print(f"❌ Skipping {ticker} (no price)")
 
-    print("\n✅ Cycle complete. Sleeping...\n")
-    time.sleep(60)
+            print(f"{ticker} moved: {last_price} → {price}")
+
+            # Update memory
+            last_prices[ticker] = price
+
+        else:
+            print(f"{ticker} no change")
+
+    print("😴 Sleeping...\n")
+    time.sleep(30)
