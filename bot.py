@@ -1,3 +1,5 @@
+print("BOOTING BOT...")
+
 import requests
 import time
 import os
