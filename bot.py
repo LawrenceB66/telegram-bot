@@ -4,136 +4,146 @@ import requests
 import time
 import os
 
-# -------------------------
+# =========================
 # ENV VARIABLES
-# -------------------------
+# =========================
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
-# -------------------------
+# =========================
 # WATCHLIST
-# -------------------------
+# =========================
 symbols = ["AMC", "GME", "CVNA", "UPST"]
 
-# -------------------------
-# STATE TRACKING
-# -------------------------
+# =========================
+# STATE STORAGE
+# =========================
 last_prices = {}
 last_alert_time = {}
 
-COOLDOWN_SECONDS = 900  # 15 min cooldown
+COOLDOWN_SECONDS = 900  # 15 minutes
 
-# -------------------------
+# =========================
 # SAFE REQUEST
-# -------------------------
+# =========================
 def safe_request(url):
     try:
-        response = requests.get(url, timeout=10)
-        return response.json()
+        return requests.get(url, timeout=10).json()
     except Exception as e:
-        print("Error:", e)
+        print(f"Error: {e}")
         return None
 
-# -------------------------
-# GET PRICE
-# -------------------------
+# =========================
+# GET PRICE (Finnhub)
+# =========================
 def get_price(symbol):
-    url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
+    api_key = os.getenv("FINNHUB_API_KEY")
+    url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={api_key}"
+
     data = safe_request(url)
+
     if data and "c" in data:
-        return data["c"]
+        return float(data["c"])
+
     return None
 
-# -------------------------
+# =========================
 # SEND TELEGRAM MESSAGE
-# -------------------------
-def send_message(text):
-    requests.post(BASE_URL, data={"chat_id": CHAT_ID, "text": text})
+# =========================
+def send_alert(message):
+    url = f"{BASE_URL}?chat_id={CHAT_ID}&text={message}"
+    safe_request(url)
 
-# -------------------------
-# CLASSIFY MOVE (DIRECTIONAL TIERS)
-# -------------------------
-def classify_move(change_pct):
-    # UPSIDE
-    if change_pct >= 5:
-        return "🔥 Ticking Time Bomb"
-    elif change_pct >= 2:
-        return "💣 Pressure Cooker"
-    elif change_pct >= 1:
-        return "🚀 Breakout"
+# =========================
+# FORMAT MESSAGE
+# =========================
+def format_message(symbol, price, change, tier):
+    return (
+        f"🎲 ${symbol}\n"
+        f"Price: {round(price, 2)}\n"
+        f"Move: {round(change, 2)}%\n\n"
+        f"{tier}"
+    )
 
-    # DOWNSIDE
-    elif change_pct <= -5:
-        return "🩸 Cascade"
-    elif change_pct <= -2:
-        return "💥 Sell Pressure"
-    elif change_pct <= -1:
-        return "⚠️ Breakdown"
-
-    return None
-
-# -------------------------
+# =========================
 # MAIN LOOP
-# -------------------------
+# =========================
 while True:
-    print("\n📊 New cycle...")
+    print("📊 New cycle...")
 
     for symbol in symbols:
         price = get_price(symbol)
 
         if price is None:
+            print(f"{symbol} price fetch failed")
             continue
 
-        # FIRST RUN (INITIALIZE)
+        # Initialize
         if symbol not in last_prices:
             last_prices[symbol] = price
             print(f"{symbol} initialized at {price}")
             continue
 
-        old_price = last_prices[symbol]
-        change_pct = ((price - old_price) / old_price) * 100
+        last_price = last_prices[symbol]
+        change = ((price - last_price) / last_price) * 100
 
+        print(f"{symbol} change: {round(change,2)}%")
+
+        # =========================
         # FILTER SMALL MOVES
-        if abs(change_pct) < 1:
-            print(f"{symbol} small move: {round(change_pct,2)}% (ignored)")
-            last_prices[symbol] = price
+        # =========================
+        if abs(change) < 1:
+            print(f"{symbol} small move: {round(change,2)}% (ignored)")
             continue
 
+        # =========================
         # COOLDOWN CHECK
+        # =========================
         now = time.time()
+
         if symbol in last_alert_time:
-            elapsed = now - last_alert_time[symbol]
-            if elapsed < COOLDOWN_SECONDS:
-                print(f"{symbol} cooldown active ({int(elapsed)}s) — skipped")
-                last_prices[symbol] = price
+            if now - last_alert_time[symbol] < COOLDOWN_SECONDS:
+                print(f"{symbol} cooldown active (blocked)")
                 continue
 
-        # CLASSIFY
-        tier = classify_move(change_pct)
-        if not tier:
+        # =========================
+        # TIER LOGIC
+        # =========================
+        tier = None
+
+        # UPSIDE
+        if change >= 1 and change < 2:
+            tier = "🚀 Breakout"
+
+        elif change >= 2 and change < 5:
+            tier = "💣 Pressure Cooker"
+
+        elif change >= 5:
+            tier = "🔥 Ticking Time Bomb"
+
+        # DOWNSIDE
+        elif change <= -1 and change > -2.5:
+            tier = "⚠️ Breakdown"
+
+        elif change <= -2.5 and change > -5:
+            tier = "💥 Sell Pressure"
+
+        elif change <= -5:
+            tier = "🩸 Cascade"
+
+        # =========================
+        # SEND ALERT
+        # =========================
+        if tier:
+            message = format_message(symbol, price, change, tier)
+            send_alert(message)
+
+            print(f"ALERT SENT: {symbol} {tier}")
+
+            last_alert_time[symbol] = now
             last_prices[symbol] = price
-            continue
 
-        # FORMAT MESSAGE
-        direction_emoji = "📈" if change_pct > 0 else "📉"
-
-        message = (
-            f"🎲 ${symbol}\n"
-            f"Price: {round(price,2)}\n"
-            f"Move: {round(change_pct,2)}% {direction_emoji}\n\n"
-            f"{tier}"
-        )
-
-        # SEND
-        send_message(message)
-        print(f"ALERT: {symbol} {round(change_pct,2)}% → {tier}")
-
-        # UPDATE STATE
-        last_prices[symbol] = price
-        last_alert_time[symbol] = now
-
-    print("😴 Sleeping...")
+    print("😴 Sleeping...\n")
     time.sleep(60)
