@@ -1,149 +1,139 @@
-print("🔥🔥🔥 FINAL CONTROL LAYER V1 🔥🔥🔥")
+print("🔥🔥🔥 FINAL CONTROLLED VERSION + DIRECTIONAL TIERS 🔥🔥🔥")
 
 import requests
 import time
 import os
 
-# =========================
+# -------------------------
 # ENV VARIABLES
-# =========================
+# -------------------------
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
-# =========================
+# -------------------------
 # WATCHLIST
-# =========================
+# -------------------------
 symbols = ["AMC", "GME", "CVNA", "UPST"]
 
-# =========================
-# STATE MEMORY
-# =========================
+# -------------------------
+# STATE TRACKING
+# -------------------------
 last_prices = {}
 last_alert_time = {}
 
-# =========================
-# SETTINGS
-# =========================
-MOVE_THRESHOLD = 1.0      # % move required
-COOLDOWN_SECONDS = 900   # 15 min cooldown
+COOLDOWN_SECONDS = 900  # 15 min cooldown
 
-# =========================
+# -------------------------
 # SAFE REQUEST
-# =========================
+# -------------------------
 def safe_request(url):
     try:
         response = requests.get(url, timeout=10)
         return response.json()
     except Exception as e:
-        print(f"ERROR: {e}")
+        print("Error:", e)
         return None
 
-# =========================
-# SEND TELEGRAM MESSAGE
-# =========================
-def send_message(text):
-    try:
-        requests.post(BASE_URL, data={"chat_id": CHAT_ID, "text": text})
-    except Exception as e:
-        print(f"Send error: {e}")
-
-# =========================
+# -------------------------
 # GET PRICE
-# =========================
+# -------------------------
 def get_price(symbol):
     url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
     data = safe_request(url)
-
     if data and "c" in data:
-        return float(data["c"])
+        return data["c"]
     return None
 
-# =========================
-# MAIN LOOP
-# =========================
-while True:
-    print("📡 New cycle...")
+# -------------------------
+# SEND TELEGRAM MESSAGE
+# -------------------------
+def send_message(text):
+    requests.post(BASE_URL, data={"chat_id": CHAT_ID, "text": text})
 
-    for ticker in symbols:
-        price = get_price(ticker)
+# -------------------------
+# CLASSIFY MOVE (DIRECTIONAL TIERS)
+# -------------------------
+def classify_move(change_pct):
+    # UPSIDE
+    if change_pct >= 5:
+        return "🔥 Ticking Time Bomb"
+    elif change_pct >= 2:
+        return "💣 Pressure Cooker"
+    elif change_pct >= 1:
+        return "🚀 Breakout"
+
+    # DOWNSIDE
+    elif change_pct <= -5:
+        return "🩸 Cascade"
+    elif change_pct <= -2:
+        return "💥 Sell Pressure"
+    elif change_pct <= -1:
+        return "⚠️ Breakdown"
+
+    return None
+
+# -------------------------
+# MAIN LOOP
+# -------------------------
+while True:
+    print("\n📊 New cycle...")
+
+    for symbol in symbols:
+        price = get_price(symbol)
 
         if price is None:
-            print(f"{ticker} price fetch failed")
             continue
 
-        # =========================
-        # INITIALIZE PRICE
-        # =========================
-        if ticker not in last_prices:
-            last_prices[ticker] = price
-            print(f"{ticker} initialized at {price}")
+        # FIRST RUN (INITIALIZE)
+        if symbol not in last_prices:
+            last_prices[symbol] = price
+            print(f"{symbol} initialized at {price}")
             continue
 
-        last_price = last_prices[ticker]
+        old_price = last_prices[symbol]
+        change_pct = ((price - old_price) / old_price) * 100
 
-        # =========================
-        # CALCULATE % MOVE
-        # =========================
-        percent = ((price - last_price) / last_price) * 100
-
-        # =========================
-        # IGNORE SMALL MOVES
-        # =========================
-        if abs(percent) < MOVE_THRESHOLD:
-            print(f"{ticker} small move: {percent:.2f}% (ignored)")
+        # FILTER SMALL MOVES
+        if abs(change_pct) < 1:
+            print(f"{symbol} small move: {round(change_pct,2)}% (ignored)")
+            last_prices[symbol] = price
             continue
 
-        # =========================
         # COOLDOWN CHECK
-        # =========================
         now = time.time()
-
-        if ticker in last_alert_time:
-            elapsed = now - last_alert_time[ticker]
-
+        if symbol in last_alert_time:
+            elapsed = now - last_alert_time[symbol]
             if elapsed < COOLDOWN_SECONDS:
-                print(f"{ticker} cooldown active ({int(elapsed)}s)")
+                print(f"{symbol} cooldown active ({int(elapsed)}s) — skipped")
+                last_prices[symbol] = price
                 continue
 
-        # =========================
-        # TIER LOGIC
-        # =========================
-        abs_move = abs(percent)
+        # CLASSIFY
+        tier = classify_move(change_pct)
+        if not tier:
+            last_prices[symbol] = price
+            continue
 
-        if abs_move >= 5:
-            tier = "🔥 Ticking Time Bomb"
-        elif abs_move >= 2:
-            tier = "💣 Pressure Cooker"
-        else:
-            tier = "🚀 Breakout"
-
-        # =========================
         # FORMAT MESSAGE
-        # =========================
-        direction = "📈" if percent > 0 else "📉"
+        direction_emoji = "📈" if change_pct > 0 else "📉"
 
-        msg = (
-            f"🎲 ${ticker}\n"
-            f"Price: {price:.2f}\n"
-            f"Move: {percent:+.2f}% {direction}\n\n"
+        message = (
+            f"🎲 ${symbol}\n"
+            f"Price: {round(price,2)}\n"
+            f"Move: {round(change_pct,2)}% {direction_emoji}\n\n"
             f"{tier}"
         )
 
-        # =========================
-        # SEND ALERT
-        # =========================
-        send_message(msg)
+        # SEND
+        send_message(message)
+        print(f"ALERT: {symbol} {round(change_pct,2)}% → {tier}")
 
-        print(f"{ticker} ALERT SENT: {percent:.2f}%")
-
-        # =========================
         # UPDATE STATE
-        # =========================
-        last_prices[ticker] = price
-        last_alert_time[ticker] = now
+        last_prices[symbol] = price
+        last_alert_time[symbol] = now
 
-    print("😴 Sleeping...\n")
+    print("😴 Sleeping...")
     time.sleep(60)
