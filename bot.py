@@ -7,15 +7,15 @@ import requests
 # =========================
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-FMP_API_KEY = os.getenv("FMP_API_KEY")
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
-if not TOKEN or not CHAT_ID or not FMP_API_KEY:
+if not TOKEN or not CHAT_ID or not FINNHUB_API_KEY:
     print("❌ ENV VARIABLES NOT LOADED — EXITING")
     exit()
 
 print("🚀 BOOTING BOT...")
 print(f"CHAT_ID: {CHAT_ID}")
-print(f"FMP_API_KEY: {'LOADED' if FMP_API_KEY else 'None'}")
+print(f"FINNHUB_API_KEY: {'LOADED' if FINNHUB_API_KEY else 'None'}")
 
 # =========================
 # CONFIG
@@ -40,10 +40,10 @@ def send_alert(message):
         print(f"❌ Telegram error: {e}")
 
 # =========================
-# DATA FETCH (FMP)
+# DATA FETCH (FINNHUB)
 # =========================
 def get_price(ticker):
-    url = f"https://financialmodelingprep.com/api/v3/quote/{ticker}?apikey={FMP_API_KEY}"
+    url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={FINNHUB_API_KEY}"
 
     try:
         response = requests.get(url, timeout=10)
@@ -54,11 +54,20 @@ def get_price(ticker):
 
         data = response.json()
 
-        if not data or len(data) == 0:
-            print(f"❌ No data for {ticker}")
+        # Finnhub returns:
+        # c = current price
+        # h = high
+        # l = low
+        # o = open
+        # pc = previous close
+
+        price = data.get("c")
+
+        if price is None or price == 0:
+            print(f"❌ Invalid price for {ticker}")
             return None
 
-        return data[0]["price"]
+        return price
 
     except Exception as e:
         print(f"❌ Request error: {e}")
@@ -130,11 +139,4 @@ def run():
 
             last_prices[ticker] = price
 
-        print("\n😴 Sleeping...\n")
-        time.sleep(POLL_INTERVAL)
-
-# =========================
-# ENTRY POINT
-# =========================
-if __name__ == "__main__":
-    run()
+        print("\n😴 Sleeping
