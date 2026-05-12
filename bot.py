@@ -139,4 +139,4 @@ def run():
 
             last_prices[ticker] = price
 
-        print("\n😴 Sleeping...\N")
+        print("\n😴 Sleeping...\n")
