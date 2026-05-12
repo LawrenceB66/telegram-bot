@@ -2,117 +2,100 @@ import os
 import time
 import requests
 
-print("🚀 BOOTING BOT...")
-
-# ========================
+# =========================
 # ENV VARIABLES
-# ========================
+# =========================
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 FMP_API_KEY = os.getenv("FMP_API_KEY")
-
-print("TOKEN:", TOKEN)
-print("CHAT_ID:", CHAT_ID)
-print("FMP_API_KEY:", FMP_API_KEY)
 
 if not TOKEN or not CHAT_ID or not FMP_API_KEY:
     print("❌ ENV VARIABLES NOT LOADED — EXITING")
     exit()
 
-BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+print("🚀 BOOTING BOT...")
+print(f"CHAT_ID: {CHAT_ID}")
+print(f"FMP_API_KEY: {'LOADED' if FMP_API_KEY else 'None'}")
 
-# ========================
+# =========================
 # CONFIG
-# ========================
-TICKERS = ["GME", "CVNA", "AMC", "UPST"]
-
+# =========================
+TICKERS = ["GME", "AMC", "CVNA", "UPST"]
 POLL_INTERVAL = 30  # seconds
 
-# Thresholds (tune later)
-BREAKOUT_THRESHOLD = 1.0
-PRESSURE_THRESHOLD = 2.5
-BOMB_THRESHOLD = 4.0
-
-BREAKDOWN_THRESHOLD = -1.0
-SELL_PRESSURE_THRESHOLD = -2.5
-CASCADE_THRESHOLD = -4.0
-
-# ========================
-# STATE TRACKING
-# ========================
 last_prices = {}
 
-# ========================
-# HELPERS
-# ========================
-def safe_request(url):
+# =========================
+# TELEGRAM
+# =========================
+def send_alert(message):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": message
+    }
     try:
-        r = requests.get(url, timeout=10)
-        if r.status_code == 200:
-            return r.json()
-        else:
-            print(f"❌ Bad response: {r.status_code}")
-            return None
+        requests.post(url, json=payload, timeout=10)
     except Exception as e:
-        print("❌ Request error:", e)
+        print(f"❌ Telegram error: {e}")
+
+# =========================
+# DATA FETCH (FMP)
+# =========================
+def get_price(ticker):
+    url = f"https://financialmodelingprep.com/api/v3/quote/{ticker}?apikey={FMP_API_KEY}"
+
+    try:
+        response = requests.get(url, timeout=10)
+
+        if response.status_code != 200:
+            print(f"❌ Bad response: {response.status_code}")
+            return None
+
+        data = response.json()
+
+        if not data or len(data) == 0:
+            print(f"❌ No data for {ticker}")
+            return None
+
+        return data[0]["price"]
+
+    except Exception as e:
+        print(f"❌ Request error: {e}")
         return None
 
-
-def send_alert(message):
-    try:
-        requests.post(BASE_URL, json={
-            "chat_id": CHAT_ID,
-            "text": message
-        })
-    except Exception as e:
-        print("❌ Telegram error:", e)
-
-
-def get_price(symbol):
-    url = f"https://financialmodelingprep.com/api/v3/quote/{symbol}?apikey={FMP_API_KEY}"
-    data = safe_request(url)
-
-    if data and len(data) > 0:
-        return data[0]["price"]
-    return None
-
-
-# ========================
-# CLASSIFICATION ENGINE
-# ========================
-def classify_move(pct):
-
+# =========================
+# SIGNAL CLASSIFICATION
+# =========================
+def classify_move(pct_change):
     # UPSIDE
-    if pct >= BOMB_THRESHOLD:
-        return "💣 Ticking Time Bomb"
-    elif pct >= PRESSURE_THRESHOLD:
-        return "🔥 Pressure Cooker"
-    elif pct >= BREAKOUT_THRESHOLD:
+    if pct_change >= 3:
         return "🚀 Breakout"
+    elif pct_change >= 2:
+        return "🔥 Pressure Cooker"
+    elif pct_change >= 1:
+        return "💣 Ticking Time Bomb"
 
     # DOWNSIDE
-    elif pct <= CASCADE_THRESHOLD:
+    elif pct_change <= -3:
         return "🩸 Cascade"
-    elif pct <= SELL_PRESSURE_THRESHOLD:
+    elif pct_change <= -2:
         return "💥 Sell Pressure"
-    elif pct <= BREAKDOWN_THRESHOLD:
+    elif pct_change <= -1:
         return "⚠️ Breakdown"
 
     return None
 
-
-# ========================
+# =========================
 # MAIN LOOP
-# ========================
+# =========================
 def run():
-
-    print("✅ BOT RUNNING...\n")
+    global last_prices
 
     while True:
-        print("🔄 New cycle...\n")
+        print("\n📊 New cycle...")
 
         for ticker in TICKERS:
-
             price = get_price(ticker)
 
             if price is None:
@@ -124,23 +107,23 @@ def run():
                 print(f"{ticker} initialized at {price}")
                 continue
 
-            prev = last_prices[ticker]
-            pct_change = ((price - prev) / prev) * 100
+            prev_price = last_prices[ticker]
+            pct_change = ((price - prev_price) / prev_price) * 100
 
-            print(f"{ticker} move: {round(pct_change, 2)}%")
+            print(f"{ticker} change: {pct_change:.2f}%")
 
             signal = classify_move(pct_change)
 
             if signal:
                 message = (
-                    f"🎲 $ {ticker}\n"
-                    f"Price: {round(price, 2)}\n"
-                    f"Move: {round(pct_change, 2)}%\n\n"
+                    f"${ticker}\n"
+                    f"Price: {price:.2f}\n"
+                    f"Move: {pct_change:.2f}%\n\n"
                     f"{signal}"
                 )
 
-                print(f"⚡ SIGNAL: {signal} on {ticker}")
                 send_alert(message)
+                print(f"📡 ALERT SENT: {ticker} {signal}")
 
             else:
                 print(f"{ticker} move ignored")
@@ -150,9 +133,8 @@ def run():
         print("\n😴 Sleeping...\n")
         time.sleep(POLL_INTERVAL)
 
-
-# ========================
+# =========================
 # ENTRY POINT
-# ========================
+# =========================
 if __name__ == "__main__":
     run()
