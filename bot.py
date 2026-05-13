@@ -1,6 +1,7 @@
 import requests
 import time
 import os
+from collections import defaultdict, deque
 
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -8,6 +9,11 @@ FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
 TICKERS = ["AMC", "CVNA", "UPST"]
 POLL_INTERVAL = 60
+
+# =========================
+# VOLUME TRACKING
+# =========================
+volume_history = defaultdict(lambda: deque(maxlen=20))  # last 20 cycles
 
 # =========================
 # SAFE REQUEST
@@ -35,7 +41,7 @@ def get_quote(ticker):
     return {
         "price": data.get("c"),
         "prev": data.get("pc"),
-        "volume": data.get("v")
+        "volume": data.get("v") or 0
     }
 
 # =========================
@@ -47,22 +53,47 @@ def percent_change(price, prev):
     return round(((price - prev) / prev) * 100, 2)
 
 # =========================
-# EVENT ENGINE (ONLY TRIGGER)
+# VOLUME MULTIPLIER
 # =========================
-def detect_event(change):
-    if abs(change) >= 25:
-        return "🚨 BREAKOUT EVENT", f"{change}% move (EXTREME)"
+def get_volume_multiplier(ticker, current_volume):
+    history = volume_history[ticker]
 
-    if abs(change) >= 10:
-        return "⚡ MOMENTUM", f"{change}% move"
+    # store volume
+    history.append(current_volume)
 
-    if abs(change) >= 5:
-        return "🟡 EARLY MOVE", f"{change}% move"
+    if len(history) < 5:
+        return 0  # not enough data yet
+
+    avg_volume = sum(history) / len(history)
+
+    if avg_volume == 0:
+        return 0
+
+    return round(current_volume / avg_volume, 2)
+
+# =========================
+# EVENT ENGINE (CONSERVATIVE)
+# =========================
+def detect_event(change, vol_mult):
+    if vol_mult == 0:
+        return None, None
+
+    # 🚨 BREAKOUT
+    if abs(change) >= 20 and vol_mult >= 5:
+        return "🚨 BREAKOUT", f"{change}% move | Vol {vol_mult}x"
+
+    # ⚡ MOMENTUM
+    if abs(change) >= 12 and vol_mult >= 4:
+        return "⚡ MOMENTUM", f"{change}% move | Vol {vol_mult}x"
+
+    # 🟡 EARLY MOVE
+    if abs(change) >= 7 and vol_mult >= 3:
+        return "🟡 EARLY MOVE", f"{change}% move | Vol {vol_mult}x"
 
     return None, None
 
 # =========================
-# STRUCTURE ENGINE (CONTEXT ONLY)
+# STRUCTURE (CONTEXT ONLY)
 # =========================
 def detect_structure(si, dtc):
     if si >= 40 and dtc >= 8:
@@ -98,43 +129,37 @@ def process_ticker(ticker):
     volume = data["volume"]
 
     change = percent_change(price, prev)
+    vol_mult = get_volume_multiplier(ticker, volume)
 
-    print(f"Price: {price} | Change: {change}%")
+    print(f"Price: {price} | Change: {change}% | Vol: {vol_mult}x")
 
     # =========================
     # EVENT (TRIGGER)
     # =========================
-    event_label, event_reason = detect_event(change)
+    event_label, event_reason = detect_event(change, vol_mult)
 
-    # 🚫 HARD STOP — NO EVENT = NO ALERT
     if not event_label:
         print(f"❌ No event for {ticker}")
         return
 
     # =========================
-    # STRUCTURE (CONTEXT ONLY)
+    # STRUCTURE (TEMP)
     # =========================
-    # TEMP placeholders (until real SI/DTC wired)
     si = 35
     dtc = 6
 
     struct_label, struct_reason = detect_structure(si, dtc)
 
     # =========================
-    # BUILD MESSAGE
+    # MESSAGE
     # =========================
     msg = f"${ticker}\nPrice: {price}\nMove: {change}%\n\n"
 
-    # EVENT FIRST (CAUSE)
     msg += f"{event_label}\n{event_reason}\n\n"
 
-    # STRUCTURE SECOND (CONTEXT)
     if struct_label:
         msg += f"{struct_label}\n{struct_reason}"
 
-    # =========================
-    # SEND
-    # =========================
     print(f"📤 Sending alert for {ticker}")
     send_alert(msg)
 
