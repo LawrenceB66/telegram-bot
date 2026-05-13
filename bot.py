@@ -3,111 +3,131 @@ import time
 import requests
 
 # =========================
-# CONFIG
+# ENV
 # =========================
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
-TICKERS = ["GME", "AMC", "CVNA", "UPST"]
-POLL_INTERVAL = 30  # seconds
-
-# =========================
-# VALIDATION
-# =========================
-if not TOKEN or not CHAT_ID or not FINNHUB_API_KEY:
-    print("❌ ENV VARIABLES NOT LOADED - EXITING")
-    print(f"TOKEN: {TOKEN}")
-    print(f"CHAT_ID: {CHAT_ID}")
-    print(f"FINNHUB_API_KEY: {FINNHUB_API_KEY}")
+if not TOKEN or not CHAT_ID:
+    print("❌ Missing TOKEN or CHAT_ID")
     exit()
 
 print("✅ ENV LOADED")
 print("🚀 BOOTING BOT...")
 
+BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+
+# =========================
+# SETTINGS
+# =========================
+TICKERS = ["AMC", "CVNA", "UPST"]
+POLL_INTERVAL = 30
+MIN_ALERT_MOVE = 0.5
+
+# =========================
+# STATE
+# =========================
+last_prices = {}
+last_signals = {}
+
+# =========================
+# SAFE REQUEST
+# =========================
+def safe_request(url, params=None):
+    try:
+        r = requests.get(url, params=params, timeout=10)
+        return r.json()
+    except Exception as e:
+        print(f"⚠️ Request error: {e}")
+        return None
+
+# =========================
+# DATA
+# =========================
+def get_price(ticker):
+    url = f"https://financialmodelingprep.com/api/v3/quote/{ticker}?apikey=demo"
+    data = safe_request(url)
+
+    if data and len(data) > 0:
+        return data[0]["price"]
+
+    return None
+
 # =========================
 # TELEGRAM
 # =========================
 def send_alert(message):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {
+    params = {
         "chat_id": CHAT_ID,
         "text": message
     }
-    try:
-        requests.post(url, json=payload, timeout=10)
-    except Exception as e:
-        print(f"❌ TELEGRAM ERROR: {e}")
+    safe_request(BASE_URL, params)
 
 # =========================
-# FINNHUB PRICE
+# SIGNAL LOGIC (BASELINE)
 # =========================
-def get_price(ticker):
-    url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={FINNHUB_API_KEY}"
-    try:
-        res = requests.get(url, timeout=10)
-        data = res.json()
-
-        if "c" in data and data["c"] != 0:
-            return data["c"]
-        else:
-            print(f"❌ {ticker} bad data: {data}")
-            return None
-
-    except Exception as e:
-        print(f"❌ {ticker} fetch error: {e}")
+def classify_signal(pct_change):
+    if pct_change >= 2:
+        return "🚀 Breakout"
+    elif pct_change >= 1:
+        return "🔥 Pressure Cooker"
+    elif pct_change >= 0.5:
+        return "💣 Ticking Time Bomb"
+    elif pct_change <= -2:
+        return "🩸 Cascade"
+    elif pct_change <= -1:
+        return "💥 Sell Pressure"
+    elif pct_change <= -0.5:
+        return "⚠️ Breakdown"
+    else:
         return None
 
 # =========================
-# SIGNAL ENGINE
+# FORMAT
 # =========================
-last_prices = {}
+def format_message(ticker, price, pct_change, signal):
+    return (
+        f"${ticker}\n"
+        f"Price: {price:.2f}\n"
+        f"Move: {pct_change:.2f}%\n\n"
+        f"{signal}"
+    )
 
+# =========================
+# PROCESS ONE TICKER
+# =========================
 def process_ticker(ticker):
     price = get_price(ticker)
 
     if price is None:
-        print(f"{ticker} price fetch failed")
+        print(f"⚠️ No data for {ticker}")
         return
 
     if ticker not in last_prices:
         last_prices[ticker] = price
-        print(f"{ticker} initialized at {price}")
+        print(f"{ticker} initialized @ {price}")
         return
 
-    prev = last_prices[ticker]
-    pct_change = ((price - prev) / prev) * 100
+    prev_price = last_prices[ticker]
+    pct_change = ((price - prev_price) / prev_price) * 100
 
-    signal = None
+    signal = classify_signal(pct_change)
 
-    # ===== UPSIDE =====
-    if pct_change > 2:
-        signal = "🚀 Breakout"
-    elif pct_change > 1:
-        signal = "🔥 Pressure Cooker"
-    elif pct_change > 0.5:
-        signal = "💣 Ticking Time Bomb"
+    if signal and abs(pct_change) >= MIN_ALERT_MOVE:
 
-    # ===== DOWNSIDE =====
-    elif pct_change < -2:
-        signal = "🩸 Cascade"
-    elif pct_change < -1:
-        signal = "💥 Sell Pressure"
-    elif pct_change < -0.5:
-        signal = "⚠️ Breakdown"
+        last_signal = last_signals.get(ticker)
 
-    if signal:
-        message = (
-            f"${ticker}\n"
-            f"Price: {price:.2f}\n"
-            f"Move: {pct_change:.2f}%\n\n"
-            f"{signal}"
-        )
+        if signal != last_signal:
+            message = format_message(ticker, price, pct_change, signal)
+            send_alert(message)
 
-        send_alert(message)
-        print(f"📡 ALERT SENT: {ticker} {signal}")
+            print(f"📡 ALERT SENT: {ticker} {signal}")
+            last_signals[ticker] = signal
+        else:
+            print(f"{ticker} duplicate ignored")
+
     else:
-        print(f"{ticker} move ignored")
+        print(f"{ticker} move ignored ({pct_change:.2f}%)")
 
     last_prices[ticker] = price
 
@@ -116,16 +136,17 @@ def process_ticker(ticker):
 # =========================
 def run():
     while True:
-        print("\n🔄 New cycle...\n")
+        print("\n🔁 New cycle...\n")
 
         for ticker in TICKERS:
             process_ticker(ticker)
 
-        print("\nSleeping...\n")
+        print("\n😴 Sleeping...\n")
         time.sleep(POLL_INTERVAL)
 
 # =========================
-# ENTRY POINT
+# ENTRY POINT (YOU WERE RIGHT TO CHECK THIS)
 # =========================
+
 if __name__ == "__main__":
     run()
