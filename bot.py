@@ -36,7 +36,6 @@ def get_price(ticker):
     url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={FINNHUB_API_KEY}"
     data = safe_request(url)
 
-    # Finnhub returns: { c: current price }
     if data and "c" in data and data["c"] != 0:
         return data["c"]
 
@@ -44,7 +43,7 @@ def get_price(ticker):
     return None
 
 # =========================
-# 📊 CLASSIFY MOVE (TEMP BASIC)
+# 📊 CLASSIFY MOVE (UNCHANGED)
 # =========================
 def classify_move(ticker, price):
     global last_prices
@@ -58,15 +57,12 @@ def classify_move(ticker, price):
 
     last_prices[ticker] = price
 
-    # 🚫 FILTER NOISE
     if abs(change_pct) < 0.5:
         return None
 
-    # 🔺 UPSIDE
     if change_pct >= 1:
         return "💣 Ticking Time Bomb"
     
-    # 🔻 DOWNSIDE
     if change_pct <= -1:
         return "⚠️ Breakdown"
 
@@ -101,7 +97,11 @@ def process_ticker(ticker):
     price = get_price(ticker)
 
     if price is None:
+        print(f"❌ {ticker}: No price data")
         return
+
+    # 👇 NEW VISIBILITY LINE
+    print(f"📊 {ticker} | Price: {round(price, 2)}")
 
     signal = classify_move(ticker, price)
 
@@ -120,7 +120,7 @@ def run():
         for ticker in TICKERS:
             process_ticker(ticker)
 
-        print("😴 Sleeping...\n")
+        print("\n😴 Sleeping...\n")
         time.sleep(POLL_INTERVAL)
 
 # =========================
