@@ -14,8 +14,14 @@ BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 # =========================
 # CONFIG
 # =========================
-TICKERS = ["AMC", "CVNA", "UPST"]  # expand later
+TICKERS = ["AMC", "CVNA", "UPST"]
 POLL_INTERVAL = 60
+
+# =========================
+# STATE MEMORY (CRITICAL)
+# =========================
+last_signal = {}
+last_state = {}
 
 # =========================
 # SAFE REQUEST
@@ -51,7 +57,6 @@ def get_price_data(ticker):
 
 # =========================
 # MOCK STRUCTURE DATA (TEMP)
-# Replace later with real SI/DTC source
 # =========================
 def get_structure_data(ticker):
     mock_data = {
@@ -65,7 +70,6 @@ def get_structure_data(ticker):
 # VOLUME CLASSIFICATION (TEMP)
 # =========================
 def get_volume_status():
-    # placeholder until real volume comparison added
     return "ELEVATED"
 
 # =========================
@@ -150,22 +154,41 @@ def process_ticker(ticker):
     si, dtc = get_structure_data(ticker)
     volume = get_volume_status()
 
-    # PRIORITY 1: EVENT
+    # PRIORITY: EVENT
     if detect_event(change):
         signal = "BREAKOUT"
         state = "EVENT"
-
     else:
         signal, state = classify_signal(si, dtc)
 
-    # 🔒 CORE RULE
+    # 🔒 NO STRUCTURE = NO ALERT
     if signal is None:
         print(f"❌ No structure for {ticker}")
         return
 
+    # =========================
+    # STATE MEMORY FILTER (KEY)
+    # =========================
+    prev_signal = last_signal.get(ticker)
+    prev_state = last_state.get(ticker)
+
+    if signal == prev_signal and state == prev_state:
+        print(f"⏭️ No change for {ticker} (skipping)")
+        return
+
+    # =========================
+    # SEND ALERT
+    # =========================
     message = format_alert(ticker, price, change, signal, si, dtc, volume, state)
-    print(f"📡 Sending alert for {ticker}")
+    print(f"📡 NEW SIGNAL for {ticker} → sending alert")
+
     send_alert(message)
+
+    # =========================
+    # UPDATE MEMORY
+    # =========================
+    last_signal[ticker] = signal
+    last_state[ticker] = state
 
 # =========================
 # MAIN LOOP
