@@ -42,15 +42,18 @@ def safe_request(url, params=None):
         return None
 
 # =========================
-# DATA
+# DATA (FIXED — NO CRASH)
 # =========================
 def get_price(ticker):
     url = f"https://financialmodelingprep.com/api/v3/quote/{ticker}?apikey=demo"
     data = safe_request(url)
 
-    if data and len(data) > 0:
-        return data[0]["price"]
+    # ✅ VALID RESPONSE
+    if isinstance(data, list) and len(data) > 0:
+        return data[0].get("price")
 
+    # ❌ BAD RESPONSE (DO NOT CRASH)
+    print(f"⚠️ Bad data for {ticker}: {data}")
     return None
 
 # =========================
@@ -83,7 +86,7 @@ def classify_signal(pct_change):
         return None
 
 # =========================
-# FORMAT
+# FORMAT MESSAGE
 # =========================
 def format_message(ticker, price, pct_change, signal):
     return (
@@ -94,7 +97,7 @@ def format_message(ticker, price, pct_change, signal):
     )
 
 # =========================
-# PROCESS ONE TICKER
+# PROCESS TICKER
 # =========================
 def process_ticker(ticker):
     price = get_price(ticker)
@@ -145,7 +148,7 @@ def run():
         time.sleep(POLL_INTERVAL)
 
 # =========================
-# ENTRY POINT (YOU WERE RIGHT TO CHECK THIS)
+# ENTRY POINT
 # =========================
 
 if __name__ == "__main__":
