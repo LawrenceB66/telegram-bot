@@ -7,7 +7,6 @@ CHAT_ID = os.getenv("CHAT_ID")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
 TICKERS = ["AMC", "CVNA", "UPST"]
-
 POLL_INTERVAL = 60
 
 # =========================
@@ -23,7 +22,7 @@ def safe_request(url):
     return None
 
 # =========================
-# GET PRICE + VOLUME
+# GET QUOTE
 # =========================
 def get_quote(ticker):
     url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={FINNHUB_API_KEY}"
@@ -35,42 +34,35 @@ def get_quote(ticker):
 
     return {
         "price": data.get("c"),
-        "prev_close": data.get("pc"),
-        "volume": data.get("v")  # Finnhub may not always return volume
+        "prev": data.get("pc"),
+        "volume": data.get("v")
     }
 
 # =========================
 # % CHANGE
 # =========================
-def get_percent_change(price, prev):
+def percent_change(price, prev):
     if not price or not prev:
         return 0
     return round(((price - prev) / prev) * 100, 2)
 
 # =========================
-# EVENT ENGINE (NEW)
+# EVENT ENGINE (ONLY TRIGGER)
 # =========================
-def detect_event(change, volume):
-    # Volume fallback
-    if not volume:
-        volume = 0
-
-    # 🚨 STRONG MOMENTUM
+def detect_event(change):
     if abs(change) >= 25:
-        return "🚨 BREAKOUT EVENT", f"Move {change}% (EXTREME)"
+        return "🚨 BREAKOUT EVENT", f"{change}% move (EXTREME)"
 
-    # ⚡ MOMENTUM
     if abs(change) >= 10:
-        return "⚡ MOMENTUM", f"Move {change}%"
+        return "⚡ MOMENTUM", f"{change}% move"
 
-    # 🟡 EARLY ACTIVITY
     if abs(change) >= 5:
-        return "🟡 EARLY MOVE", f"Move {change}%"
+        return "🟡 EARLY MOVE", f"{change}% move"
 
     return None, None
 
 # =========================
-# STRUCTURE ENGINE (MANUAL PLACEHOLDER)
+# STRUCTURE ENGINE (CONTEXT ONLY)
 # =========================
 def detect_structure(si, dtc):
     if si >= 40 and dtc >= 8:
@@ -87,9 +79,9 @@ def detect_structure(si, dtc):
 # =========================
 # SEND ALERT
 # =========================
-def send_alert(message):
+def send_alert(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": CHAT_ID, "text": message})
+    requests.post(url, json={"chat_id": CHAT_ID, "text": msg})
 
 # =========================
 # PROCESS
@@ -102,44 +94,43 @@ def process_ticker(ticker):
         return
 
     price = data["price"]
-    prev = data["prev_close"]
+    prev = data["prev"]
     volume = data["volume"]
 
-    change = get_percent_change(price, prev)
+    change = percent_change(price, prev)
 
     print(f"Price: {price} | Change: {change}%")
 
     # =========================
-    # EVENT DETECTION
+    # EVENT (TRIGGER)
     # =========================
-    event_label, event_reason = detect_event(change, volume)
+    event_label, event_reason = detect_event(change)
+
+    # 🚫 HARD STOP — NO EVENT = NO ALERT
+    if not event_label:
+        print(f"❌ No event for {ticker}")
+        return
 
     # =========================
-    # STRUCTURE (STATIC FOR NOW)
-    # Replace with real data later
+    # STRUCTURE (CONTEXT ONLY)
     # =========================
-    si = 35   # placeholder
-    dtc = 6   # placeholder
+    # TEMP placeholders (until real SI/DTC wired)
+    si = 35
+    dtc = 6
 
     struct_label, struct_reason = detect_structure(si, dtc)
 
     # =========================
-    # LOGIC CONTROL
-    # =========================
-    if not event_label and not struct_label:
-        print(f"❌ No signal for {ticker}")
-        return
-
-    # =========================
-    # BUILD MESSAGE (CLEAN)
+    # BUILD MESSAGE
     # =========================
     msg = f"${ticker}\nPrice: {price}\nMove: {change}%\n\n"
 
-    if struct_label:
-        msg += f"{struct_label}\n{struct_reason}\n\n"
+    # EVENT FIRST (CAUSE)
+    msg += f"{event_label}\n{event_reason}\n\n"
 
-    if event_label:
-        msg += f"{event_label}\n{event_reason}\n"
+    # STRUCTURE SECOND (CONTEXT)
+    if struct_label:
+        msg += f"{struct_label}\n{struct_reason}"
 
     # =========================
     # SEND
