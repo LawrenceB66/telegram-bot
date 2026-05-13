@@ -18,10 +18,13 @@ TICKERS = ["AMC", "CVNA", "UPST"]
 POLL_INTERVAL = 60
 
 # =========================
-# STATE MEMORY (CRITICAL)
+# STATE MEMORY (PERSIST DURING RUNTIME)
 # =========================
 last_signal = {}
 last_state = {}
+last_alert_time = {}
+
+COOLDOWN_SECONDS = 900  # 15 min safety lock
 
 # =========================
 # SAFE REQUEST
@@ -35,14 +38,14 @@ def safe_request(url):
         return None
 
 # =========================
-# GET PRICE + CHANGE
+# PRICE + CHANGE
 # =========================
 def get_price_data(ticker):
     url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={FINNHUB_API_KEY}"
     data = safe_request(url)
 
     if not data or "c" not in data:
-        print(f"⚠️ No data for {ticker}")
+        print(f"⚠️ No price data for {ticker}")
         return None, None
 
     price = data.get("c")
@@ -56,34 +59,38 @@ def get_price_data(ticker):
     return round(price, 2), round(change, 2)
 
 # =========================
-# MOCK STRUCTURE DATA (TEMP)
+# MOCK STRUCTURE (REPLACE LATER)
 # =========================
 def get_structure_data(ticker):
-    mock_data = {
+    mock = {
         "AMC": (42, 9),
         "CVNA": (28, 4),
         "UPST": (35, 6)
     }
-    return mock_data.get(ticker, (0, 0))
+    return mock.get(ticker, (0, 0))
 
 # =========================
-# VOLUME CLASSIFICATION (TEMP)
+# VOLUME (TEMP LOGIC)
 # =========================
-def get_volume_status():
-    return "ELEVATED"
+def get_volume_status(change):
+    if abs(change) >= 15:
+        return "SURGING"
+    elif abs(change) >= 7:
+        return "ELEVATED"
+    return "NORMAL"
 
 # =========================
-# EVENT DETECTION
+# EVENT DETECTION (STRICT)
 # =========================
-def detect_event(change):
-    if abs(change) >= 10:
+def detect_event(change, volume):
+    if abs(change) >= 15 and volume in ["SURGING", "ELEVATED"]:
         return True
     return False
 
 # =========================
-# SIGNAL CLASSIFICATION
+# STRUCTURE CLASSIFICATION
 # =========================
-def classify_signal(si, dtc):
+def classify_structure(si, dtc):
     if si >= 40 and dtc >= 8:
         return "TTB", "ESCALATION"
 
@@ -96,21 +103,48 @@ def classify_signal(si, dtc):
     return None, None
 
 # =========================
-# FORMAT ALERT
+# ALERT FILTER (ANTI-SPAM CORE)
+# =========================
+def should_alert(ticker, signal, state):
+    prev_signal = last_signal.get(ticker)
+    prev_state = last_state.get(ticker)
+
+    # First time = allow
+    if prev_signal is None:
+        print(f"🆕 First signal for {ticker}")
+        return True
+
+    # No change = block
+    if signal == prev_signal and state == prev_state:
+        print(f"⏭️ No change for {ticker}")
+        return False
+
+    # Cooldown protection
+    now = time.time()
+    last_time = last_alert_time.get(ticker, 0)
+
+    if now - last_time < COOLDOWN_SECONDS:
+        print(f"⏳ Cooldown active for {ticker}")
+        return False
+
+    return True
+
+# =========================
+# FORMAT MESSAGE
 # =========================
 def format_alert(ticker, price, change, signal, si, dtc, volume, state):
     icons = {
         "TTB": "💣",
         "PRESSURE": "🔥",
         "BASE": "🧱",
-        "BREAKOUT": "🚨"
+        "EVENT": "🚨"
     }
 
     names = {
         "TTB": "Ticking Time Bomb",
         "PRESSURE": "Pressure Cooker",
         "BASE": "Baseline",
-        "BREAKOUT": "Breakout"
+        "EVENT": "Breakout Event"
     }
 
     message = f"""
@@ -130,7 +164,7 @@ State: {state}
     return message.strip()
 
 # =========================
-# SEND TELEGRAM MESSAGE
+# SEND TELEGRAM
 # =========================
 def send_alert(message):
     try:
@@ -142,7 +176,7 @@ def send_alert(message):
         print(f"❌ Telegram error: {e}")
 
 # =========================
-# PROCESS TICKER
+# PROCESS ENGINE
 # =========================
 def process_ticker(ticker):
     print(f"🔎 Processing {ticker}")
@@ -152,43 +186,34 @@ def process_ticker(ticker):
         return
 
     si, dtc = get_structure_data(ticker)
-    volume = get_volume_status()
+    volume = get_volume_status(change)
 
-    # PRIORITY: EVENT
-    if detect_event(change):
-        signal = "BREAKOUT"
-        state = "EVENT"
+    # PRIORITY: EVENT ENGINE
+    if detect_event(change, volume):
+        signal = "EVENT"
+        state = "ACTIVE"
+
     else:
-        signal, state = classify_signal(si, dtc)
+        signal, state = classify_structure(si, dtc)
 
-    # 🔒 NO STRUCTURE = NO ALERT
     if signal is None:
-        print(f"❌ No structure for {ticker}")
+        print(f"❌ No valid structure for {ticker}")
         return
 
-    # =========================
-    # STATE MEMORY FILTER (KEY)
-    # =========================
-    prev_signal = last_signal.get(ticker)
-    prev_state = last_state.get(ticker)
-
-    if signal == prev_signal and state == prev_state:
-        print(f"⏭️ No change for {ticker} (skipping)")
+    # FILTER
+    if not should_alert(ticker, signal, state):
         return
 
-    # =========================
-    # SEND ALERT
-    # =========================
+    # SEND
     message = format_alert(ticker, price, change, signal, si, dtc, volume, state)
-    print(f"📡 NEW SIGNAL for {ticker} → sending alert")
 
+    print(f"📡 ALERT: {ticker} → {signal} ({state})")
     send_alert(message)
 
-    # =========================
     # UPDATE MEMORY
-    # =========================
     last_signal[ticker] = signal
     last_state[ticker] = state
+    last_alert_time[ticker] = time.time()
 
 # =========================
 # MAIN LOOP
@@ -204,7 +229,7 @@ def run():
         time.sleep(POLL_INTERVAL)
 
 # =========================
-# ENTRY POINT
+# ENTRY
 # =========================
 if __name__ == "__main__":
     print("🚀 STRUCTURED EQUITY PRESSURE ENGINE LIVE")
