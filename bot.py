@@ -1,176 +1,178 @@
-import requests
-import time
 import os
-from collections import defaultdict, deque
+import time
+import requests
 
+# =========================
+# ENV VARIABLES
+# =========================
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
-TICKERS = ["AMC", "CVNA", "UPST"]
-POLL_INTERVAL = 60
+BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
 # =========================
-# VOLUME TRACKING
+# CONFIG
 # =========================
-volume_history = defaultdict(lambda: deque(maxlen=20))  # last 20 cycles
+TICKERS = ["AMC", "CVNA", "UPST"]  # expand later
+POLL_INTERVAL = 60
 
 # =========================
 # SAFE REQUEST
 # =========================
 def safe_request(url):
     try:
-        res = requests.get(url, timeout=10)
-        if res.status_code == 200:
-            return res.json()
+        response = requests.get(url, timeout=10)
+        return response.json()
     except Exception as e:
-        print(f"⚠️ Request failed: {e}")
-    return None
+        print(f"❌ Request error: {e}")
+        return None
 
 # =========================
-# GET QUOTE
+# GET PRICE + CHANGE
 # =========================
-def get_quote(ticker):
+def get_price_data(ticker):
     url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={FINNHUB_API_KEY}"
     data = safe_request(url)
 
-    if not data:
+    if not data or "c" not in data:
         print(f"⚠️ No data for {ticker}")
-        return None
-
-    return {
-        "price": data.get("c"),
-        "prev": data.get("pc"),
-        "volume": data.get("v") or 0
-    }
-
-# =========================
-# % CHANGE
-# =========================
-def percent_change(price, prev):
-    if not price or not prev:
-        return 0
-    return round(((price - prev) / prev) * 100, 2)
-
-# =========================
-# VOLUME MULTIPLIER
-# =========================
-def get_volume_multiplier(ticker, current_volume):
-    history = volume_history[ticker]
-
-    # store volume
-    history.append(current_volume)
-
-    if len(history) < 5:
-        return 0  # not enough data yet
-
-    avg_volume = sum(history) / len(history)
-
-    if avg_volume == 0:
-        return 0
-
-    return round(current_volume / avg_volume, 2)
-
-# =========================
-# EVENT ENGINE (CONSERVATIVE)
-# =========================
-def detect_event(change, vol_mult):
-    if vol_mult == 0:
         return None, None
 
-    # 🚨 BREAKOUT
-    if abs(change) >= 20 and vol_mult >= 5:
-        return "🚨 BREAKOUT", f"{change}% move | Vol {vol_mult}x"
+    price = data.get("c")
+    prev = data.get("pc")
 
-    # ⚡ MOMENTUM
-    if abs(change) >= 12 and vol_mult >= 4:
-        return "⚡ MOMENTUM", f"{change}% move | Vol {vol_mult}x"
+    if price and prev:
+        change = ((price - prev) / prev) * 100
+    else:
+        change = 0
 
-    # 🟡 EARLY MOVE
-    if abs(change) >= 7 and vol_mult >= 3:
-        return "🟡 EARLY MOVE", f"{change}% move | Vol {vol_mult}x"
-
-    return None, None
+    return round(price, 2), round(change, 2)
 
 # =========================
-# STRUCTURE (CONTEXT ONLY)
+# MOCK STRUCTURE DATA (TEMP)
+# Replace later with real SI/DTC source
 # =========================
-def detect_structure(si, dtc):
+def get_structure_data(ticker):
+    mock_data = {
+        "AMC": (42, 9),
+        "CVNA": (28, 4),
+        "UPST": (35, 6)
+    }
+    return mock_data.get(ticker, (0, 0))
+
+# =========================
+# VOLUME CLASSIFICATION (TEMP)
+# =========================
+def get_volume_status():
+    # placeholder until real volume comparison added
+    return "ELEVATED"
+
+# =========================
+# EVENT DETECTION
+# =========================
+def detect_event(change):
+    if abs(change) >= 10:
+        return True
+    return False
+
+# =========================
+# SIGNAL CLASSIFICATION
+# =========================
+def classify_signal(si, dtc):
     if si >= 40 and dtc >= 8:
-        return "💣 TICKING TIME BOMB", f"SI {si}% | DTC {dtc}"
+        return "TTB", "ESCALATION"
 
-    if si >= 30 and dtc >= 5:
-        return "🔥 PRESSURE COOKER", f"SI {si}% | DTC {dtc}"
+    elif si >= 30 and dtc >= 5:
+        return "PRESSURE", "BUILDING"
 
-    if si >= 20 and dtc >= 3:
-        return "🧱 BASELINE", f"SI {si}% | DTC {dtc}"
+    elif si >= 20 and dtc >= 3:
+        return "BASE", "LOADED"
 
     return None, None
 
 # =========================
-# SEND ALERT
+# FORMAT ALERT
 # =========================
-def send_alert(msg):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": CHAT_ID, "text": msg})
+def format_alert(ticker, price, change, signal, si, dtc, volume, state):
+    icons = {
+        "TTB": "💣",
+        "PRESSURE": "🔥",
+        "BASE": "🧱",
+        "BREAKOUT": "🚨"
+    }
+
+    names = {
+        "TTB": "Ticking Time Bomb",
+        "PRESSURE": "Pressure Cooker",
+        "BASE": "Baseline",
+        "BREAKOUT": "Breakout"
+    }
+
+    message = f"""
+${ticker}
+Price: {price} • {change}%
+
+{icons[signal]} {names[signal]}
+
+Structure:
+SI: {si}%
+DTC: {dtc}
+Volume: {volume}
+
+State: {state}
+"""
+
+    return message.strip()
 
 # =========================
-# PROCESS
+# SEND TELEGRAM MESSAGE
+# =========================
+def send_alert(message):
+    try:
+        requests.post(BASE_URL, json={
+            "chat_id": CHAT_ID,
+            "text": message
+        })
+    except Exception as e:
+        print(f"❌ Telegram error: {e}")
+
+# =========================
+# PROCESS TICKER
 # =========================
 def process_ticker(ticker):
     print(f"🔎 Processing {ticker}")
 
-    data = get_quote(ticker)
-    if not data:
+    price, change = get_price_data(ticker)
+    if price is None:
         return
 
-    price = data["price"]
-    prev = data["prev"]
-    volume = data["volume"]
+    si, dtc = get_structure_data(ticker)
+    volume = get_volume_status()
 
-    change = percent_change(price, prev)
-    vol_mult = get_volume_multiplier(ticker, volume)
+    # PRIORITY 1: EVENT
+    if detect_event(change):
+        signal = "BREAKOUT"
+        state = "EVENT"
 
-    print(f"Price: {price} | Change: {change}% | Vol: {vol_mult}x")
+    else:
+        signal, state = classify_signal(si, dtc)
 
-    # =========================
-    # EVENT (TRIGGER)
-    # =========================
-    event_label, event_reason = detect_event(change, vol_mult)
-
-    if not event_label:
-        print(f"❌ No event for {ticker}")
+    # 🔒 CORE RULE
+    if signal is None:
+        print(f"❌ No structure for {ticker}")
         return
 
-    # =========================
-    # STRUCTURE (TEMP)
-    # =========================
-    si = 35
-    dtc = 6
-
-    struct_label, struct_reason = detect_structure(si, dtc)
-
-    # =========================
-    # MESSAGE
-    # =========================
-    msg = f"${ticker}\nPrice: {price}\nMove: {change}%\n\n"
-
-    msg += f"{event_label}\n{event_reason}\n\n"
-
-    if struct_label:
-        msg += f"{struct_label}\n{struct_reason}"
-
-    print(f"📤 Sending alert for {ticker}")
-    send_alert(msg)
+    message = format_alert(ticker, price, change, signal, si, dtc, volume, state)
+    print(f"📡 Sending alert for {ticker}")
+    send_alert(message)
 
 # =========================
 # MAIN LOOP
 # =========================
 def run():
-    print("🚀 Bot started...")
-
     while True:
-        print("\n🔁 New cycle...\n")
+        print("\n🔄 New cycle...\n")
 
         for ticker in TICKERS:
             process_ticker(ticker)
@@ -181,6 +183,6 @@ def run():
 # =========================
 # ENTRY POINT
 # =========================
-
 if __name__ == "__main__":
+    print("🚀 STRUCTURED EQUITY PRESSURE ENGINE LIVE")
     run()
