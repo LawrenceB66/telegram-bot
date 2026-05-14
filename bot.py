@@ -18,13 +18,10 @@ TICKERS = ["AMC", "CVNA", "UPST"]
 POLL_INTERVAL = 60
 
 # =========================
-# STATE MEMORY (PERSIST DURING RUNTIME)
+# STATE MEMORY
 # =========================
 last_signal = {}
 last_state = {}
-last_alert_time = {}
-
-COOLDOWN_SECONDS = 900  # 15 min safety lock
 
 # =========================
 # SAFE REQUEST
@@ -38,14 +35,14 @@ def safe_request(url):
         return None
 
 # =========================
-# PRICE + CHANGE
+# GET PRICE DATA
 # =========================
 def get_price_data(ticker):
     url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={FINNHUB_API_KEY}"
     data = safe_request(url)
 
     if not data or "c" not in data:
-        print(f"⚠️ No price data for {ticker}")
+        print(f"⚠️ No data for {ticker}")
         return None, None
 
     price = data.get("c")
@@ -59,36 +56,39 @@ def get_price_data(ticker):
     return round(price, 2), round(change, 2)
 
 # =========================
-# MOCK STRUCTURE (REPLACE LATER)
+# MOCK STRUCTURE (ANCHOR)
 # =========================
 def get_structure_data(ticker):
-    mock = {
+    mock_data = {
         "AMC": (42, 9),
         "CVNA": (28, 4),
         "UPST": (35, 6)
     }
-    return mock.get(ticker, (0, 0))
+    return mock_data.get(ticker, (0, 0))
 
 # =========================
-# VOLUME (TEMP LOGIC)
+# VOLUME (PLACEHOLDER)
 # =========================
-def get_volume_status(change):
-    if abs(change) >= 15:
-        return "SURGING"
-    elif abs(change) >= 7:
-        return "ELEVATED"
-    return "NORMAL"
+def get_volume_status():
+    return "ELEVATED"
 
 # =========================
-# EVENT DETECTION (STRICT)
+# EVENT ENGINE (LOCKED)
 # =========================
-def detect_event(change, volume):
-    if abs(change) >= 15 and volume in ["SURGING", "ELEVATED"]:
-        return True
-    return False
+def detect_event(change):
+    abs_change = abs(change)
+
+    if abs_change >= 20:
+        return "EXTREME", "EVENT"
+    elif abs_change >= 12:
+        return "STRONG", "EVENT"
+    elif abs_change >= 8:
+        return "BREAKOUT", "EVENT"
+
+    return None, None
 
 # =========================
-# STRUCTURE CLASSIFICATION
+# STRUCTURE ENGINE
 # =========================
 def classify_structure(si, dtc):
     if si >= 40 and dtc >= 8:
@@ -103,48 +103,25 @@ def classify_structure(si, dtc):
     return None, None
 
 # =========================
-# ALERT FILTER (ANTI-SPAM CORE)
-# =========================
-def should_alert(ticker, signal, state):
-    prev_signal = last_signal.get(ticker)
-    prev_state = last_state.get(ticker)
-
-    # First time = allow
-    if prev_signal is None:
-        print(f"🆕 First signal for {ticker}")
-        return True
-
-    # No change = block
-    if signal == prev_signal and state == prev_state:
-        print(f"⏭️ No change for {ticker}")
-        return False
-
-    # Cooldown protection
-    now = time.time()
-    last_time = last_alert_time.get(ticker, 0)
-
-    if now - last_time < COOLDOWN_SECONDS:
-        print(f"⏳ Cooldown active for {ticker}")
-        return False
-
-    return True
-
-# =========================
-# FORMAT MESSAGE
+# FORMAT ALERT
 # =========================
 def format_alert(ticker, price, change, signal, si, dtc, volume, state):
     icons = {
         "TTB": "💣",
         "PRESSURE": "🔥",
         "BASE": "🧱",
-        "EVENT": "🚨"
+        "BREAKOUT": "🚨",
+        "STRONG": "⚡",
+        "EXTREME": "🧨"
     }
 
     names = {
         "TTB": "Ticking Time Bomb",
         "PRESSURE": "Pressure Cooker",
         "BASE": "Baseline",
-        "EVENT": "Breakout Event"
+        "BREAKOUT": "Breakout Move",
+        "STRONG": "Strong Move",
+        "EXTREME": "Extreme Move"
     }
 
     message = f"""
@@ -164,7 +141,7 @@ State: {state}
     return message.strip()
 
 # =========================
-# SEND TELEGRAM
+# SEND ALERT
 # =========================
 def send_alert(message):
     try:
@@ -176,7 +153,7 @@ def send_alert(message):
         print(f"❌ Telegram error: {e}")
 
 # =========================
-# PROCESS ENGINE
+# PROCESS TICKER
 # =========================
 def process_ticker(ticker):
     print(f"🔎 Processing {ticker}")
@@ -186,39 +163,54 @@ def process_ticker(ticker):
         return
 
     si, dtc = get_structure_data(ticker)
-    volume = get_volume_status(change)
+    volume = get_volume_status()
 
+    # =========================
     # PRIORITY: EVENT ENGINE
-    if detect_event(change, volume):
-        signal = "EVENT"
-        state = "ACTIVE"
+    # =========================
+    signal, state = detect_event(change)
 
-    else:
+    # =========================
+    # FALLBACK: STRUCTURE
+    # =========================
+    if signal is None:
         signal, state = classify_structure(si, dtc)
 
+    # NO SIGNAL → NO ALERT
     if signal is None:
-        print(f"❌ No valid structure for {ticker}")
+        print(f"❌ No valid signal for {ticker}")
         return
 
-    # FILTER
-    if not should_alert(ticker, signal, state):
+    # =========================
+    # STATE MEMORY FILTER
+    # =========================
+    prev_signal = last_signal.get(ticker)
+    prev_state = last_state.get(ticker)
+
+    if signal == prev_signal and state == prev_state:
+        print(f"⏭️ No change for {ticker}")
         return
 
-    # SEND
+    # =========================
+    # SEND ALERT
+    # =========================
     message = format_alert(ticker, price, change, signal, si, dtc, volume, state)
 
     print(f"📡 ALERT: {ticker} → {signal} ({state})")
     send_alert(message)
 
+    # =========================
     # UPDATE MEMORY
+    # =========================
     last_signal[ticker] = signal
     last_state[ticker] = state
-    last_alert_time[ticker] = time.time()
 
 # =========================
 # MAIN LOOP
 # =========================
 def run():
+    print("🚀 STRUCTURED EQUITY PRESSURE ENGINE LIVE\n")
+
     while True:
         print("\n🔄 New cycle...\n")
 
@@ -229,8 +221,7 @@ def run():
         time.sleep(POLL_INTERVAL)
 
 # =========================
-# ENTRY
+# ENTRY POINT
 # =========================
 if __name__ == "__main__":
-    print("🚀 STRUCTURED EQUITY PRESSURE ENGINE LIVE")
     run()
