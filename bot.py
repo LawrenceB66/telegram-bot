@@ -56,7 +56,7 @@ def get_price_data(ticker):
     return round(price, 2), round(change, 2)
 
 # =========================
-# MOCK STRUCTURE (ANCHOR)
+# MOCK STRUCTURE DATA
 # =========================
 def get_structure_data(ticker):
     mock_data = {
@@ -67,30 +67,21 @@ def get_structure_data(ticker):
     return mock_data.get(ticker, (0, 0))
 
 # =========================
-# VOLUME (PLACEHOLDER)
+# VOLUME STATUS
 # =========================
 def get_volume_status():
     return "ELEVATED"
 
 # =========================
-# EVENT ENGINE (LOCKED)
+# EVENT DETECTION
 # =========================
 def detect_event(change):
-    abs_change = abs(change)
-
-    if abs_change >= 20:
-        return "EXTREME", "EVENT"
-    elif abs_change >= 12:
-        return "STRONG", "EVENT"
-    elif abs_change >= 8:
-        return "BREAKOUT", "EVENT"
-
-    return None, None
+    return abs(change) >= 10
 
 # =========================
-# STRUCTURE ENGINE
+# SIGNAL CLASSIFICATION
 # =========================
-def classify_structure(si, dtc):
+def classify_signal(si, dtc):
     if si >= 40 and dtc >= 8:
         return "TTB", "ESCALATION"
 
@@ -103,6 +94,22 @@ def classify_structure(si, dtc):
     return None, None
 
 # =========================
+# READ LAYER (LOCKED)
+# =========================
+def get_read(signal):
+    reads = {
+        "BASE": "Early positioning is present. Short interest and coverage risk exist, but pressure is not active yet. This is a watchlist condition — not an action signal.",
+
+        "PRESSURE": "Short pressure is actively building. Liquidity and positioning are tightening. This is where setups begin forming — attention required.",
+
+        "TTB": "High short exposure with limited exit liquidity. Conditions are elevated for a squeeze or aggressive move. This is a high-risk, high-volatility state.",
+
+        "BREAKOUT": "An active move is in progress. Momentum has already triggered. This is no longer setup — this is reaction phase."
+    }
+
+    return reads.get(signal, "")
+
+# =========================
 # FORMAT ALERT
 # =========================
 def format_alert(ticker, price, change, signal, si, dtc, volume, state):
@@ -110,19 +117,17 @@ def format_alert(ticker, price, change, signal, si, dtc, volume, state):
         "TTB": "💣",
         "PRESSURE": "🔥",
         "BASE": "🧱",
-        "BREAKOUT": "🚨",
-        "STRONG": "⚡",
-        "EXTREME": "🧨"
+        "BREAKOUT": "🚨"
     }
 
     names = {
         "TTB": "Ticking Time Bomb",
         "PRESSURE": "Pressure Cooker",
         "BASE": "Baseline",
-        "BREAKOUT": "Breakout Move",
-        "STRONG": "Strong Move",
-        "EXTREME": "Extreme Move"
+        "BREAKOUT": "Breakout"
     }
+
+    read = get_read(signal)
 
     message = f"""
 ${ticker}
@@ -131,11 +136,13 @@ Price: {price} • {change}%
 {icons[signal]} {names[signal]}
 
 Structure:
-SI: {si}%
-DTC: {dtc}
+SI: {si}% • DTC: {dtc}
 Volume: {volume}
 
 State: {state}
+
+READ:
+{read}
 """
 
     return message.strip()
@@ -165,20 +172,15 @@ def process_ticker(ticker):
     si, dtc = get_structure_data(ticker)
     volume = get_volume_status()
 
-    # =========================
-    # PRIORITY: EVENT ENGINE
-    # =========================
-    signal, state = detect_event(change)
+    # PRIORITY: EVENT
+    if detect_event(change):
+        signal = "BREAKOUT"
+        state = "EVENT"
+    else:
+        signal, state = classify_signal(si, dtc)
 
-    # =========================
-    # FALLBACK: STRUCTURE
-    # =========================
     if signal is None:
-        signal, state = classify_structure(si, dtc)
-
-    # NO SIGNAL → NO ALERT
-    if signal is None:
-        print(f"❌ No valid signal for {ticker}")
+        print(f"❌ No structure for {ticker}")
         return
 
     # =========================
@@ -195,8 +197,8 @@ def process_ticker(ticker):
     # SEND ALERT
     # =========================
     message = format_alert(ticker, price, change, signal, si, dtc, volume, state)
+    print(f"📡 NEW SIGNAL for {ticker}")
 
-    print(f"📡 ALERT: {ticker} → {signal} ({state})")
     send_alert(message)
 
     # =========================
@@ -209,8 +211,6 @@ def process_ticker(ticker):
 # MAIN LOOP
 # =========================
 def run():
-    print("🚀 STRUCTURED EQUITY PRESSURE ENGINE LIVE\n")
-
     while True:
         print("\n🔄 New cycle...\n")
 
@@ -224,4 +224,5 @@ def run():
 # ENTRY POINT
 # =========================
 if __name__ == "__main__":
+    print("🚀 STRUCTURED EQUITY PRESSURE ENGINE LIVE")
     run()
