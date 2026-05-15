@@ -73,23 +73,35 @@ def get_volume_status():
     return "ELEVATED"
 
 # =========================
-# EVENT DETECTION
-# =========================
-def detect_event(change):
-    return abs(change) >= 10
-
-# =========================
-# SIGNAL CLASSIFICATION
+# STRUCTURE CLASSIFICATION
 # =========================
 def classify_signal(si, dtc):
     if si >= 40 and dtc >= 8:
         return "TTB", "ESCALATION"
-
     elif si >= 30 and dtc >= 5:
         return "PRESSURE", "BUILDING"
-
     elif si >= 20 and dtc >= 3:
         return "BASE", "LOADED"
+    return None, None
+
+# =========================
+# EVENT DETECTION (INTELLIGENT)
+# =========================
+def detect_event(change, volume, si, dtc):
+
+    abs_change = abs(change)
+
+    # SQUEEZE EVENT (highest priority)
+    if abs_change >= 10 and volume == "ELEVATED" and si >= 30 and dtc >= 5:
+        return "SQUEEZE", "EXPLOSIVE"
+
+    # CONFIRMED BREAKOUT
+    if abs_change >= 8 and volume == "ELEVATED":
+        return "BREAKOUT", "CONFIRMED"
+
+    # EARLY SPIKE
+    if abs_change >= 5:
+        return "SPIKE", "EARLY"
 
     return None, None
 
@@ -104,7 +116,11 @@ def get_read(signal):
 
         "TTB": "High short exposure with limited exit liquidity. Conditions are elevated for a squeeze or aggressive move. This is a high-risk, high-volatility state.",
 
-        "BREAKOUT": "An active move is in progress. Momentum has already triggered. This is no longer setup — this is reaction phase."
+        "SPIKE": "A rapid price move has started, but confirmation is limited. Monitor closely — early-stage momentum.",
+
+        "BREAKOUT": "A strong move is in progress with supporting volume. Momentum is confirmed — active trading conditions.",
+
+        "SQUEEZE": "Short pressure is actively releasing under momentum. High probability volatility expansion — explosive conditions."
     }
 
     return reads.get(signal, "")
@@ -113,18 +129,23 @@ def get_read(signal):
 # FORMAT ALERT
 # =========================
 def format_alert(ticker, price, change, signal, si, dtc, volume, state):
+
     icons = {
-        "TTB": "💣",
-        "PRESSURE": "🔥",
         "BASE": "🧱",
-        "BREAKOUT": "🚨"
+        "PRESSURE": "🔥",
+        "TTB": "💣",
+        "SPIKE": "⚠️",
+        "BREAKOUT": "🚨",
+        "SQUEEZE": "💥"
     }
 
     names = {
-        "TTB": "Ticking Time Bomb",
-        "PRESSURE": "Pressure Cooker",
         "BASE": "Baseline",
-        "BREAKOUT": "Breakout"
+        "PRESSURE": "Pressure Cooker",
+        "TTB": "Ticking Time Bomb",
+        "SPIKE": "Early Spike",
+        "BREAKOUT": "Confirmed Move",
+        "SQUEEZE": "Squeeze Event"
     }
 
     read = get_read(signal)
@@ -163,6 +184,7 @@ def send_alert(message):
 # PROCESS TICKER
 # =========================
 def process_ticker(ticker):
+
     print(f"🔎 Processing {ticker}")
 
     price, change = get_price_data(ticker)
@@ -172,10 +194,12 @@ def process_ticker(ticker):
     si, dtc = get_structure_data(ticker)
     volume = get_volume_status()
 
-    # PRIORITY: EVENT
-    if detect_event(change):
-        signal = "BREAKOUT"
-        state = "EVENT"
+    # EVENT PRIORITY (overrides structure)
+    event_signal, event_state = detect_event(change, volume, si, dtc)
+
+    if event_signal:
+        signal = event_signal
+        state = event_state
     else:
         signal, state = classify_signal(si, dtc)
 
@@ -197,7 +221,8 @@ def process_ticker(ticker):
     # SEND ALERT
     # =========================
     message = format_alert(ticker, price, change, signal, si, dtc, volume, state)
-    print(f"📡 NEW SIGNAL for {ticker}")
+
+    print(f"📡 NEW SIGNAL for {ticker} → {signal}")
 
     send_alert(message)
 
