@@ -35,7 +35,7 @@ def safe_request(url):
         return None
 
 # =========================
-# GET PRICE DATA
+# PRICE DATA
 # =========================
 def get_price_data(ticker):
     url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={FINNHUB_API_KEY}"
@@ -85,44 +85,34 @@ def classify_signal(si, dtc):
     return None, None
 
 # =========================
-# EVENT DETECTION (INTELLIGENT)
+# EVENT DETECTION
 # =========================
 def detect_event(change, volume, si, dtc):
-
     abs_change = abs(change)
 
-    # SQUEEZE EVENT (highest priority)
     if abs_change >= 10 and volume == "ELEVATED" and si >= 30 and dtc >= 5:
         return "SQUEEZE", "EXPLOSIVE"
 
-    # CONFIRMED BREAKOUT
     if abs_change >= 8 and volume == "ELEVATED":
         return "BREAKOUT", "CONFIRMED"
 
-    # EARLY SPIKE
     if abs_change >= 5:
         return "SPIKE", "EARLY"
 
     return None, None
 
 # =========================
-# READ LAYER (LOCKED)
+# READ LAYER (FINAL LOCKED)
 # =========================
 def get_read(signal):
     reads = {
-        "BASE": "Early positioning is present. Short interest and coverage risk exist, but pressure is not active yet. This is a watchlist condition — not an action signal.",
-
-        "PRESSURE": "Short pressure is actively building. Liquidity and positioning are tightening. This is where setups begin forming — attention required.",
-
-        "TTB": "High short exposure with limited exit liquidity. Conditions are elevated for a squeeze or aggressive move. This is a high-risk, high-volatility state.",
-
-        "SPIKE": "A rapid price move has started, but confirmation is limited. Monitor closely — early-stage momentum.",
-
-        "BREAKOUT": "A strong move is in progress with supporting volume. Momentum is confirmed — active trading conditions.",
-
-        "SQUEEZE": "Short pressure is actively releasing under momentum. High probability volatility expansion — explosive conditions."
+        "BASE": "Short exposure present; positioning is stable with early pressure characteristics.",
+        "PRESSURE": "Short pressure is building; liquidity and positioning are tightening.",
+        "TTB": "Elevated short exposure with constrained liquidity; pressure conditions are intensifying.",
+        "BREAKOUT": "Price movement exceeding normal range; volatility and volume are expanding.",
+        "SPIKE": "Price movement exceeding normal range; volatility is increasing.",
+        "SQUEEZE": "Elevated short exposure is actively unwinding under expanding volatility."
     }
-
     return reads.get(signal, "")
 
 # =========================
@@ -144,7 +134,7 @@ def format_alert(ticker, price, change, signal, si, dtc, volume, state):
         "PRESSURE": "Pressure Cooker",
         "TTB": "Ticking Time Bomb",
         "SPIKE": "Early Spike",
-        "BREAKOUT": "Confirmed Move",
+        "BREAKOUT": "Breakout",
         "SQUEEZE": "Squeeze Event"
     }
 
@@ -194,7 +184,7 @@ def process_ticker(ticker):
     si, dtc = get_structure_data(ticker)
     volume = get_volume_status()
 
-    # EVENT PRIORITY (overrides structure)
+    # EVENT PRIORITY
     event_signal, event_state = detect_event(change, volume, si, dtc)
 
     if event_signal:
@@ -207,9 +197,7 @@ def process_ticker(ticker):
         print(f"❌ No structure for {ticker}")
         return
 
-    # =========================
     # STATE MEMORY FILTER
-    # =========================
     prev_signal = last_signal.get(ticker)
     prev_state = last_state.get(ticker)
 
@@ -217,18 +205,14 @@ def process_ticker(ticker):
         print(f"⏭️ No change for {ticker}")
         return
 
-    # =========================
     # SEND ALERT
-    # =========================
     message = format_alert(ticker, price, change, signal, si, dtc, volume, state)
 
     print(f"📡 NEW SIGNAL for {ticker} → {signal}")
 
     send_alert(message)
 
-    # =========================
     # UPDATE MEMORY
-    # =========================
     last_signal[ticker] = signal
     last_state[ticker] = state
 
