@@ -9,7 +9,7 @@ FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
-# TICKERS (PHASE 2 — CONTROLLED SET)
+# TICKERS
 TICKERS = [
     "AMC","GME","CVNA","UPST","WOK",
     "NVDA","TSLA","AAPL","META",
@@ -24,8 +24,9 @@ TICKERS = [
 last_prices = {}
 last_alert_time = {}
 
-# COOLDOWN (SECONDS)
+# SETTINGS
 COOLDOWN = 300  # 5 minutes
+VELOCITY_THRESHOLD = 4  # %
 
 def send_telegram(message):
     try:
@@ -60,35 +61,34 @@ def check_velocity(symbol, price):
 
     change_pct = ((price - prev) / prev) * 100
 
-    # COOLDOWN CHECK
+    # COOLDOWN
     if symbol in last_alert_time:
         if current_time - last_alert_time[symbol] < COOLDOWN:
             last_prices[symbol] = price
             return
 
-    # BULL VELOCITY
-    if change_pct >= 4:
+    # ⚡️ VELOCITY (ALWAYS SEPARATE — YOUR RULE)
+    if change_pct >= VELOCITY_THRESHOLD:
         send_telegram(
             f"${symbol}\n"
             f"Price {price:.2f} • +{change_pct:.2f}%\n\n"
-            f"VELOCITY"
+            f"⚡️ VELOCITY"
         )
         last_alert_time[symbol] = current_time
 
-    # BEAR VELOCITY (BLEEDING)
-    elif change_pct <= -4:
+    elif change_pct <= -VELOCITY_THRESHOLD:
         send_telegram(
             f"${symbol}\n"
             f"Price {price:.2f} • {change_pct:.2f}%\n\n"
-            f"BLEEDING"
+            f"🩸 BLEEDING"
         )
         last_alert_time[symbol] = current_time
 
     last_prices[symbol] = price
 
 def run():
-    print("IAL ENGINE — PHASE 2 ACTIVE")
-    print("Velocity + Bleeding + Cooldown")
+    print("IAL ENGINE — STRUCTURED MODE ACTIVE")
+    print("Velocity separated from conviction signals")
 
     while True:
         for symbol in TICKERS:
