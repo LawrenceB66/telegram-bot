@@ -1,51 +1,61 @@
-import requests
 import time
-import os
+import requests
 
-# ENV VARIABLES
-TOKEN = os.getenv("TOKEN")
-CHANNEL_ID = os.getenv("CHANNEL_ID")
-FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
+# =========================
+# CONFIG
+# =========================
 
-BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+CHAT_ID = "YOUR_CHAT_ID"
 
-# TICKERS
+VELOCITY_THRESHOLD = 5
+COOLDOWN_SECONDS = 300
+
 TICKERS = [
-    "AMC","GME","CVNA","UPST","WOK",
-    "NVDA","TSLA","AAPL","META",
-    "SOFI","PLTR","LCID","RIVN",
-    "MARA","RIOT","COIN",
-    "SPY","QQQ",
-    "AFRM","AI","SMCI","HOOD",
-    "DKNG","C3AI","BBAI"
+    "AMC","GME","CVNA","UPST","MARA","RIOT","PLTR","SOFI","LCID","NKLA",
+    "BB","NIO","XPEV","RIVN","HOOD","COIN","AFRM","DKNG","AI","MULN",
+    "SNDL","TLRY","FUBO","OPEN","QS"
 ]
 
-# MEMORY
+# =========================
+# STATE
+# =========================
+
 last_prices = {}
 last_alert_time = {}
 
-# SETTINGS
-COOLDOWN = 300  # 5 minutes
-VELOCITY_THRESHOLD = 4  # %
+# =========================
+# TELEGRAM
+# =========================
 
 def send_telegram(message):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    data = {
+        "chat_id": CHAT_ID,
+        "text": message
+    }
     try:
-        requests.post(BASE_URL, data={
-            "chat_id": CHANNEL_ID,
-            "text": message
-        })
-    except Exception as e:
-        print("Telegram Error:", e)
+        requests.post(url, data=data)
+    except:
+        print("Telegram send failed")
+
+# =========================
+# PRICE FETCH (FINNHUB)
+# =========================
+
+FINNHUB_API_KEY = "YOUR_FINNHUB_API_KEY"
 
 def get_price(symbol):
     try:
         url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
-        response = requests.get(url)
-        data = response.json()
-        return data.get("c")
-    except Exception as e:
-        print(f"Price Fetch Error ({symbol}):", e)
+        response = requests.get(url).json()
+        return response.get("c")  # current price
+    except:
         return None
+
+# =========================
+# CORE ENGINE
+# =========================
 
 def check_velocity(symbol, price):
     current_time = time.time()
@@ -54,37 +64,75 @@ def check_velocity(symbol, price):
         last_prices[symbol] = price
         return
 
-    prev = last_prices[symbol]
+    old_price = last_prices[symbol]
 
-    if prev == 0 or price is None:
+    if old_price == 0:
         return
 
-    change_pct = ((price - prev) / prev) * 100
+    change_pct = ((price - old_price) / old_price) * 100
 
+    # -------------------------
     # COOLDOWN
+    # -------------------------
     if symbol in last_alert_time:
-        if current_time - last_alert_time[symbol] < COOLDOWN:
+        if current_time - last_alert_time[symbol] < COOLDOWN_SECONDS:
             last_prices[symbol] = price
             return
 
-    # ⚡️ VELOCITY (ALWAYS SEPARATE — YOUR RULE)
+    # -------------------------
+    # ⚡️ VELOCITY (UP)
+    # -------------------------
     if change_pct >= VELOCITY_THRESHOLD:
         send_telegram(
-            f"${symbol}\n"
-            f"Price {price:.2f} • +{change_pct:.2f}%\n\n"
+            f"${symbol}\n\n"
+            f"Price: {price:.2f} • {change_pct:+.2f}%\n\n"
             f"⚡️ VELOCITY"
         )
         last_alert_time[symbol] = current_time
 
+    # -------------------------
+    # 🩸 BLEEDING (DOWN)
+    # -------------------------
     elif change_pct <= -VELOCITY_THRESHOLD:
         send_telegram(
-            f"${symbol}\n"
-            f"Price {price:.2f} • {change_pct:.2f}%\n\n"
+            f"${symbol}\n\n"
+            f"Price: {price:.2f} • {change_pct:+.2f}%\n\n"
             f"🩸 BLEEDING"
         )
         last_alert_time[symbol] = current_time
 
+    # -------------------------
+    # PLACEHOLDER (SI / DTC)
+    # -------------------------
+    # Will activate later when data is wired
+    si = 0
+    dtc = 0
+
+    # 🔥 PRESSURE
+    if si >= 30 and dtc >= 3:
+        send_telegram(
+            f"${symbol}\n\n"
+            f"Price: {price:.2f} • {change_pct:+.2f}%\n\n"
+            f"🔥 PRESSURE\n\n"
+            f"DTC: {dtc} • SI: {si}%"
+        )
+        last_alert_time[symbol] = current_time
+
+    # 💣 TIME BOMB
+    if si >= 40 and dtc >= 5:
+        send_telegram(
+            f"${symbol}\n\n"
+            f"Price: {price:.2f} • {change_pct:+.2f}%\n\n"
+            f"💣 TIME BOMB\n\n"
+            f"DTC: {dtc} • SI: {si}%"
+        )
+        last_alert_time[symbol] = current_time
+
     last_prices[symbol] = price
+
+# =========================
+# MAIN LOOP
+# =========================
 
 def run():
     print("IAL ENGINE — STRUCTURED MODE ACTIVE")
@@ -98,6 +146,9 @@ def run():
 
         time.sleep(30)
 
+# =========================
+# START
+# =========================
 
 if __name__ == "__main__":
     run()
