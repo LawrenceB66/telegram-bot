@@ -3,7 +3,7 @@ import time
 import requests
 
 # =========================
-# ENV VARIABLES
+# ENV
 # =========================
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -11,155 +11,135 @@ FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
-# =========================
-# CONFIG
-# =========================
 TICKERS = ["AMC", "CVNA", "UPST"]
 POLL_INTERVAL = 60
 
 # =========================
-# STATE MEMORY
+# MEMORY
 # =========================
-last_signal = {}
-last_state = {}
+last_alert_time = {}
+last_velocity = {}
 
 # =========================
-# SAFE REQUEST
+# CONFIG
+# =========================
+VELOCITY_THRESHOLD = 5
+VOLUME_MULTIPLIER = 2
+COOLDOWN = 180  # 3 min
+
+SI_PRESSURE = 30
+SI_BOMB = 40
+
+# =========================
+# UTIL
 # =========================
 def safe_request(url):
     try:
-        response = requests.get(url, timeout=10)
-        return response.json()
-    except Exception as e:
-        print(f"❌ Request error: {e}")
+        return requests.get(url, timeout=10).json()
+    except:
         return None
 
+def should_alert(ticker):
+    now = time.time()
+    if ticker not in last_alert_time:
+        last_alert_time[ticker] = now
+        return True
+
+    if now - last_alert_time[ticker] > COOLDOWN:
+        last_alert_time[ticker] = now
+        return True
+
+    return False
+
 # =========================
-# PRICE DATA
+# DATA
 # =========================
 def get_price_data(ticker):
     url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={FINNHUB_API_KEY}"
     data = safe_request(url)
 
-    if not data or "c" not in data:
-        print(f"⚠️ No data for {ticker}")
-        return None, None
+    if not data:
+        return None
 
     price = data.get("c")
     prev = data.get("pc")
 
-    if price and prev:
-        change = ((price - prev) / prev) * 100
-    else:
-        change = 0
+    if not price or not prev:
+        return None
 
-    return round(price, 2), round(change, 2)
+    change = ((price - prev) / prev) * 100
+
+    return {
+        "price": round(price, 2),
+        "change_pct": round(change, 2),
+        "volume": data.get("v", 0),
+        "avg_volume": data.get("v", 0)  # placeholder until upgraded
+    }
 
 # =========================
-# MOCK STRUCTURE DATA
+# MOCK STRUCTURE (TEMP)
 # =========================
 def get_structure_data(ticker):
-    mock_data = {
+    mock = {
         "AMC": (42, 9),
         "CVNA": (28, 4),
         "UPST": (35, 6)
     }
-    return mock_data.get(ticker, (0, 0))
+    si, dtc = mock.get(ticker, (0, 0))
 
-# =========================
-# VOLUME STATUS
-# =========================
-def get_volume_status():
-    return "ELEVATED"
-
-# =========================
-# STRUCTURE CLASSIFICATION
-# =========================
-def classify_signal(si, dtc):
-    if si >= 40 and dtc >= 8:
-        return "TTB", "ESCALATION"
-    elif si >= 30 and dtc >= 5:
-        return "PRESSURE", "BUILDING"
-    elif si >= 20 and dtc >= 3:
-        return "BASE", "LOADED"
-    return None, None
-
-# =========================
-# EVENT DETECTION
-# =========================
-def detect_event(change, volume, si, dtc):
-    abs_change = abs(change)
-
-    if abs_change >= 10 and volume == "ELEVATED" and si >= 30 and dtc >= 5:
-        return "SQUEEZE", "EXPLOSIVE"
-
-    if abs_change >= 8 and volume == "ELEVATED":
-        return "BREAKOUT", "CONFIRMED"
-
-    if abs_change >= 5:
-        return "SPIKE", "EARLY"
-
-    return None, None
-
-# =========================
-# READ LAYER (FINAL LOCKED)
-# =========================
-def get_read(signal):
-    reads = {
-        "BASE": "Short exposure present; positioning is stable with early pressure characteristics.",
-        "PRESSURE": "Short pressure is building; liquidity and positioning are tightening.",
-        "TTB": "Elevated short exposure with constrained liquidity; pressure conditions are intensifying.",
-        "BREAKOUT": "Price movement exceeding normal range; volatility and volume are expanding.",
-        "SPIKE": "Price movement exceeding normal range; volatility is increasing.",
-        "SQUEEZE": "Elevated short exposure is actively unwinding under expanding volatility."
-    }
-    return reads.get(signal, "")
-
-# =========================
-# FORMAT ALERT
-# =========================
-def format_alert(ticker, price, change, signal, si, dtc, volume, state):
-
-    icons = {
-        "BASE": "🧱",
-        "PRESSURE": "🔥",
-        "TTB": "💣",
-        "SPIKE": "⚠️",
-        "BREAKOUT": "🚨",
-        "SQUEEZE": "💥"
+    return {
+        "si": si,
+        "dtc": dtc
     }
 
-    names = {
-        "BASE": "Baseline",
-        "PRESSURE": "Pressure Cooker",
-        "TTB": "Ticking Time Bomb",
-        "SPIKE": "Early Spike",
-        "BREAKOUT": "Breakout",
-        "SQUEEZE": "Squeeze Event"
-    }
+# =========================
+# DETECT VELOCITY
+# =========================
+def detect_velocity(data, ticker):
+    change = data["change_pct"]
+    volume = data["volume"]
+    avg_volume = data["avg_volume"]
 
-    read = get_read(signal)
+    if volume < VOLUME_MULTIPLIER * avg_volume:
+        return None
 
-    message = f"""
+    if change >= VELOCITY_THRESHOLD:
+        return "⚡ BULL VELOCITY"
+
+    elif change <= -VELOCITY_THRESHOLD:
+        return "🩸 BEAR VELOCITY"
+
+    return None
+
+# =========================
+# DETECT PRESSURE
+# =========================
+def detect_pressure(struct):
+    si = struct["si"]
+
+    if si >= SI_BOMB:
+        return "💣 TIME BOMB"
+
+    elif si >= SI_PRESSURE:
+        return "🔥 PRESSURE"
+
+    return None
+
+# =========================
+# FORMAT
+# =========================
+def format_alert(ticker, data, struct, tag):
+    return f"""
 ${ticker}
-Price: {price} • {change}%
+Price {data['price']} • {data['change_pct']}%
 
-{icons[signal]} {names[signal]}
+{tag}
 
-Structure:
-SI: {si}% • DTC: {dtc}
-Volume: {volume}
-
-State: {state}
-
-READ:
-{read}
-"""
-
-    return message.strip()
+DTC: {struct['dtc']} • SI: {struct['si']}%
+""".strip()
 
 # =========================
-# SEND ALERT
+# SEND
 # =========================
 def send_alert(message):
     try:
@@ -167,71 +147,62 @@ def send_alert(message):
             "chat_id": CHAT_ID,
             "text": message
         })
-    except Exception as e:
-        print(f"❌ Telegram error: {e}")
+    except:
+        pass
 
 # =========================
-# PROCESS TICKER
+# ENGINE
 # =========================
 def process_ticker(ticker):
 
-    print(f"🔎 Processing {ticker}")
-
-    price, change = get_price_data(ticker)
-    if price is None:
+    data = get_price_data(ticker)
+    if not data:
         return
 
-    si, dtc = get_structure_data(ticker)
-    volume = get_volume_status()
+    struct = get_structure_data(ticker)
 
-    # EVENT PRIORITY
-    event_signal, event_state = detect_event(change, volume, si, dtc)
+    velocity = detect_velocity(data, ticker)
+    pressure = detect_pressure(struct)
 
-    if event_signal:
-        signal = event_signal
-        state = event_state
-    else:
-        signal, state = classify_signal(si, dtc)
+    # ⚡ VELOCITY (ALWAYS PUSH)
+    if velocity and should_alert(ticker):
+        send_alert(format_alert(ticker, data, struct, velocity))
 
-    if signal is None:
-        print(f"❌ No structure for {ticker}")
-        return
+    # 🔥 PRESSURE
+    if pressure and should_alert(ticker):
+        send_alert(format_alert(ticker, data, struct, pressure))
 
-    # STATE MEMORY FILTER
-    prev_signal = last_signal.get(ticker)
-    prev_state = last_state.get(ticker)
+    # 💣⚡ / 💣🩸 CONVERGENCE
+    if velocity and pressure and should_alert(ticker):
+        if "BULL" in velocity:
+            tag = "💣⚡ CONVERGENCE"
+        else:
+            tag = "💣🩸 CONVERGENCE"
 
-    if signal == prev_signal and state == prev_state:
-        print(f"⏭️ No change for {ticker}")
-        return
+        send_alert(format_alert(ticker, data, struct, tag))
 
-    # SEND ALERT
-    message = format_alert(ticker, price, change, signal, si, dtc, volume, state)
+    # ⚠️ REVERSAL DETECTION
+    prev = last_velocity.get(ticker)
 
-    print(f"📡 NEW SIGNAL for {ticker} → {signal}")
+    if prev and velocity and prev != velocity:
+        send_alert(format_alert(ticker, data, struct, "⚠️ REVERSAL"))
 
-    send_alert(message)
-
-    # UPDATE MEMORY
-    last_signal[ticker] = signal
-    last_state[ticker] = state
+    if velocity:
+        last_velocity[ticker] = velocity
 
 # =========================
-# MAIN LOOP
+# LOOP
 # =========================
 def run():
     while True:
-        print("\n🔄 New cycle...\n")
-
         for ticker in TICKERS:
             process_ticker(ticker)
 
-        print("😴 Sleeping...\n")
         time.sleep(POLL_INTERVAL)
 
 # =========================
-# ENTRY POINT
+# START
 # =========================
 if __name__ == "__main__":
-    print("🚀 STRUCTURED EQUITY PRESSURE ENGINE LIVE")
+    print("🚀 IAL ENGINE LIVE")
     run()
