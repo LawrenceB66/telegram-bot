@@ -2,14 +2,14 @@ import requests
 import time
 import os
 
-# ENV
+# ENV VARIABLES
 TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
-# TICKERS
+# TICKERS (PHASE 2 — CONTROLLED SET)
 TICKERS = [
     "AMC","GME","CVNA","UPST","WOK",
     "NVDA","TSLA","AAPL","META",
@@ -24,7 +24,7 @@ TICKERS = [
 last_prices = {}
 last_alert_time = {}
 
-# ⏱️ COOLDOWN (seconds)
+# COOLDOWN (SECONDS)
 COOLDOWN = 300  # 5 minutes
 
 def send_telegram(message):
@@ -39,9 +39,11 @@ def send_telegram(message):
 def get_price(symbol):
     try:
         url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
-        data = requests.get(url).json()
+        response = requests.get(url)
+        data = response.json()
         return data.get("c")
-    except:
+    except Exception as e:
+        print(f"Price Fetch Error ({symbol}):", e)
         return None
 
 def check_velocity(symbol, price):
@@ -58,35 +60,35 @@ def check_velocity(symbol, price):
 
     change_pct = ((price - prev) / prev) * 100
 
-    # ⛔ COOLDOWN CHECK
+    # COOLDOWN CHECK
     if symbol in last_alert_time:
         if current_time - last_alert_time[symbol] < COOLDOWN:
             last_prices[symbol] = price
             return
 
-    # ⚡️ BULL VELOCITY
+    # BULL VELOCITY
     if change_pct >= 4:
         send_telegram(
             f"${symbol}\n"
             f"Price {price:.2f} • +{change_pct:.2f}%\n\n"
-            f"⚡️ VELOCITY"
+            f"VELOCITY"
         )
         last_alert_time[symbol] = current_time
 
-    # 🩸 BLEEDING
+    # BEAR VELOCITY (BLEEDING)
     elif change_pct <= -4:
         send_telegram(
             f"${symbol}\n"
             f"Price {price:.2f} • {change_pct:.2f}%\n\n"
-            f"🩸 BLEEDING"
+            f"BLEEDING"
         )
         last_alert_time[symbol] = current_time
 
     last_prices[symbol] = price
 
 def run():
-    print("🔥 IAL ENGINE — PHASE 2 ACTIVE")
-    print("⚡️ Velocity + 🩸 Bleeding + ⏱️ Cooldown")
+    print("IAL ENGINE — PHASE 2 ACTIVE")
+    print("Velocity + Bleeding + Cooldown")
 
     while True:
         for symbol in TICKERS:
@@ -96,8 +98,6 @@ def run():
 
         time.sleep(30)
 
-if name == "__main__":
-    run()
 
 if __name__ == "__main__":
     run()
