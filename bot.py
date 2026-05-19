@@ -9,7 +9,7 @@ FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
-# ✅ EXPANDED TICKER SET (PHASE 2 — CONTROLLED PRODUCTION)
+# TICKERS
 TICKERS = [
     "AMC","GME","CVNA","UPST","WOK",
     "NVDA","TSLA","AAPL","META",
@@ -20,8 +20,12 @@ TICKERS = [
     "DKNG","C3AI","BBAI"
 ]
 
-# TRACKING MEMORY
+# MEMORY
 last_prices = {}
+last_alert_time = {}
+
+# ⏱️ COOLDOWN (seconds)
+COOLDOWN = 300  # 5 minutes
 
 def send_telegram(message):
     try:
@@ -41,6 +45,8 @@ def get_price(symbol):
         return None
 
 def check_velocity(symbol, price):
+    current_time = time.time()
+
     if symbol not in last_prices:
         last_prices[symbol] = price
         return
@@ -52,27 +58,35 @@ def check_velocity(symbol, price):
 
     change_pct = ((price - prev) / prev) * 100
 
-    # ⚡️ BULL VELOCITY (tightened)
+    # ⛔ COOLDOWN CHECK
+    if symbol in last_alert_time:
+        if current_time - last_alert_time[symbol] < COOLDOWN:
+            last_prices[symbol] = price
+            return
+
+    # ⚡️ BULL VELOCITY
     if change_pct >= 4:
         send_telegram(
             f"${symbol}\n"
             f"Price {price:.2f} • +{change_pct:.2f}%\n\n"
             f"⚡️ VELOCITY"
         )
+        last_alert_time[symbol] = current_time
 
-    # 🩸 BEAR VELOCITY / BLEEDING
+    # 🩸 BLEEDING
     elif change_pct <= -4:
         send_telegram(
             f"${symbol}\n"
             f"Price {price:.2f} • {change_pct:.2f}%\n\n"
             f"🩸 BLEEDING"
         )
+        last_alert_time[symbol] = current_time
 
     last_prices[symbol] = price
 
 def run():
     print("🔥 IAL ENGINE — PHASE 2 ACTIVE")
-    print("⚡️ Velocity + 🩸 Bleeding Enabled")
+    print("⚡️ Velocity + 🩸 Bleeding + ⏱️ Cooldown")
 
     while True:
         for symbol in TICKERS:
@@ -81,6 +95,9 @@ def run():
                 check_velocity(symbol, price)
 
         time.sleep(30)
+
+if name == "__main__":
+    run()
 
 if __name__ == "__main__":
     run()
