@@ -3,7 +3,7 @@ import requests
 import os
 
 # =========================
-# CONFIG (FROM RAILWAY ENV)
+# CONFIG (ENV VARIABLES)
 # =========================
 
 TOKEN = os.getenv("TOKEN")
@@ -14,19 +14,10 @@ VELOCITY_THRESHOLD = 5
 COOLDOWN_SECONDS = 300
 
 TICKERS = [
-    # High volatility / low-mid caps
     "WOK","MULN","SINT","FFIE","NKLA","SNDL","TLRY","FUBO","OPEN","QS",
-
-    # Momentum / retail favorites
     "AMC","GME","CVNA","UPST","SOFI","HOOD","AFRM","DKNG",
-
-    # Crypto volatility
     "MARA","RIOT","COIN",
-
-    # AI / hype
     "AI","PLTR",
-
-    # EV / speculative
     "LCID","RIVN","NIO","XPEV"
 ]
 
@@ -53,7 +44,7 @@ def send_telegram(message):
         print(f"Telegram error: {e}")
 
 # =========================
-# PRICE FETCH (FINNHUB)
+# PRICE FETCH
 # =========================
 
 def get_price(symbol):
@@ -62,7 +53,7 @@ def get_price(symbol):
         response = requests.get(url, timeout=10).json()
         return response.get("c")
     except Exception as e:
-        print(f"Price fetch error ({symbol}): {e}")
+        print(f"Price fetch error for {symbol}: {e}")
         return None
 
 # =========================
@@ -78,38 +69,30 @@ def check_velocity(symbol, price):
 
     old_price = last_prices[symbol]
 
-    if old_price == 0:
+    if not old_price or old_price == 0:
+        last_prices[symbol] = price
         return
 
     change_pct = ((price - old_price) / old_price) * 100
 
-    # -------------------------
-    # COOLDOWN
-    # -------------------------
     if symbol in last_alert_time:
         if current_time - last_alert_time[symbol] < COOLDOWN_SECONDS:
             last_prices[symbol] = price
             return
 
-    # -------------------------
-    # ⚡️ VELOCITY (UP)
-    # -------------------------
     if change_pct >= VELOCITY_THRESHOLD:
         send_telegram(
             f"${symbol}\n\n"
             f"Price: {price:.2f} • {change_pct:+.2f}%\n\n"
-            f"⚡️ VELOCITY"
+            f"VELOCITY"
         )
         last_alert_time[symbol] = current_time
 
-    # -------------------------
-    # 🩸 BLEEDING (DOWN)
-    # -------------------------
     elif change_pct <= -VELOCITY_THRESHOLD:
         send_telegram(
             f"${symbol}\n\n"
             f"Price: {price:.2f} • {change_pct:+.2f}%\n\n"
-            f"🩸 BLEEDING"
+            f"BLEEDING"
         )
         last_alert_time[symbol] = current_time
 
@@ -120,15 +103,20 @@ def check_velocity(symbol, price):
 # =========================
 
 def run():
-    print("🚀 IAL ENGINE — CLEAN BASELINE ACTIVE")
+    print("IAL ENGINE - CLEAN BASELINE ACTIVE")
 
     while True:
-        for symbol in TICKERS:
-            price = get_price(symbol)
-            if price:
-                check_velocity(symbol, price)
+        try:
+            for symbol in TICKERS:
+                price = get_price(symbol)
+                if price:
+                    check_velocity(symbol, price)
 
-        time.sleep(30)
+            time.sleep(30)
+
+        except Exception as e:
+            print(f"MAIN LOOP ERROR: {e}")
+            time.sleep(10)
 
 # =========================
 # START
