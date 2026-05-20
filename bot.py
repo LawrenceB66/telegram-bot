@@ -12,9 +12,20 @@ VELOCITY_THRESHOLD = 5
 COOLDOWN_SECONDS = 300
 
 TICKERS = [
-    "AMC","GME","CVNA","UPST","MARA","RIOT","PLTR","SOFI","LCID","NKLA",
-    "BB","NIO","XPEV","RIVN","HOOD","COIN","AFRM","DKNG","AI","MULN",
-    "SNDL","TLRY","FUBO","OPEN","QS"
+    # High volatility / low-mid caps
+    "WOK","MULN","SINT","FFIE","NKLA","SNDL","TLRY","FUBO","OPEN","QS",
+
+    # Momentum / retail favorites
+    "AMC","GME","CVNA","UPST","SOFI","HOOD","AFRM","DKNG",
+
+    # Crypto volatility
+    "MARA","RIOT","COIN",
+
+    # AI / hype
+    "AI","PLTR",
+
+    # EV / speculative
+    "LCID","RIVN","NIO","XPEV"
 ]
 
 # =========================
@@ -49,7 +60,7 @@ def get_price(symbol):
     try:
         url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
         response = requests.get(url).json()
-        return response.get("c")  # current price
+        return response.get("c")
     except:
         return None
 
@@ -104,7 +115,6 @@ def check_velocity(symbol, price):
     # -------------------------
     # PLACEHOLDER (SI / DTC)
     # -------------------------
-    # Will activate later when data is wired
     si = 0
     dtc = 0
 
