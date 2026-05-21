@@ -116,7 +116,8 @@ def check_velocity(symbol, price):
 # =========================
 
 def run():
-    print("IAL ENGINE - CLEAN BASELINE ACTIVE")
+    print("THURSDAY UPGRADE LIVE")
+send_telegram("🚀 THURSDAY UPGRADE LIVE")
 
     while True:
         try:
