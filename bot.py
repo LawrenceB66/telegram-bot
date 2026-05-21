@@ -10,8 +10,12 @@ TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
-VELOCITY_THRESHOLD = 5
+# Sensitivity (adjusted so alerts actually fire)
+VELOCITY_THRESHOLD = 1   # was 5 (too strict)
 COOLDOWN_SECONDS = 300
+
+# Faster checks
+SLEEP_INTERVAL = 15      # was 30
 
 TICKERS = [
     "WOK","MULN","SINT","FFIE","NKLA","SNDL","TLRY","FUBO","OPEN","QS",
@@ -33,13 +37,20 @@ last_alert_time = {}
 # =========================
 
 def send_telegram(message):
+    if not TOKEN or not CHAT_ID:
+        print("Missing TOKEN or CHAT_ID")
+        return
+
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+
     data = {
         "chat_id": CHAT_ID,
         "text": message
     }
+
     try:
-        requests.post(url, data=data, timeout=10)
+        response = requests.post(url, data=data, timeout=10)
+        print(f"Telegram sent: {response.status_code}")
     except Exception as e:
         print(f"Telegram error: {e}")
 
@@ -75,24 +86,26 @@ def check_velocity(symbol, price):
 
     change_pct = ((price - old_price) / old_price) * 100
 
+    # Cooldown check
     if symbol in last_alert_time:
         if current_time - last_alert_time[symbol] < COOLDOWN_SECONDS:
             last_prices[symbol] = price
             return
 
+    # Trigger alerts
     if change_pct >= VELOCITY_THRESHOLD:
         send_telegram(
-            f"${symbol}\n\n"
+            f"${symbol}\n"
             f"Price: {price:.2f} • {change_pct:+.2f}%\n\n"
-            f"VELOCITY"
+            f"⚡ VELOCITY"
         )
         last_alert_time[symbol] = current_time
 
     elif change_pct <= -VELOCITY_THRESHOLD:
         send_telegram(
-            f"${symbol}\n\n"
+            f"${symbol}\n"
             f"Price: {price:.2f} • {change_pct:+.2f}%\n\n"
-            f"BLEEDING"
+            f"🩸 BLEEDING"
         )
         last_alert_time[symbol] = current_time
 
@@ -104,7 +117,9 @@ def check_velocity(symbol, price):
 
 def run():
     print("THURSDAY UPGRADE LIVE")
-    send_telegram("🚀 THURSDAY UPGRADE LIVE")
+
+    # 🔥 TEST MESSAGE ON START (PROVES TELEGRAM WORKS)
+    send_telegram("🚀 BOT IS LIVE - THURSDAY UPGRADE")
 
     while True:
         try:
@@ -113,7 +128,7 @@ def run():
                 if price:
                     check_velocity(symbol, price)
 
-            time.sleep(30)
+            time.sleep(SLEEP_INTERVAL)
 
         except Exception as e:
             print(f"MAIN LOOP ERROR: {e}")
