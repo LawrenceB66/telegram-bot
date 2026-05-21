@@ -1,4 +1,4 @@
-import time 
+import time
 import requests
 import os
 
@@ -57,25 +57,6 @@ def get_price(symbol):
         return None
 
 # =========================
-# CLASSIFICATION ENGINE
-# =========================
-
-def classify_move(change_pct):
-    if change_pct >= 20:
-        return "💣 EXTREME"
-    elif change_pct >= 10:
-        return "🔥 PRESSURE"
-    elif change_pct >= VELOCITY_THRESHOLD:
-        return "⚡ MOMENTUM"
-    elif change_pct <= -20:
-        return "💣 EXTREME DUMP"
-    elif change_pct <= -10:
-        return "🔥 HEAVY SELLING"
-    elif change_pct <= -VELOCITY_THRESHOLD:
-        return "⚠️ DOWNSIDE PRESSURE"
-    return None
-
-# =========================
 # CORE ENGINE
 # =========================
 
@@ -99,13 +80,19 @@ def check_velocity(symbol, price):
             last_prices[symbol] = price
             return
 
-    label = classify_move(change_pct)
-
-    if label:
+    if change_pct >= VELOCITY_THRESHOLD:
         send_telegram(
             f"${symbol}\n\n"
             f"Price: {price:.2f} • {change_pct:+.2f}%\n\n"
-            f"{label}"
+            f"VELOCITY"
+        )
+        last_alert_time[symbol] = current_time
+
+    elif change_pct <= -VELOCITY_THRESHOLD:
+        send_telegram(
+            f"${symbol}\n\n"
+            f"Price: {price:.2f} • {change_pct:+.2f}%\n\n"
+            f"BLEEDING"
         )
         last_alert_time[symbol] = current_time
 
@@ -117,7 +104,7 @@ def check_velocity(symbol, price):
 
 def run():
     print("THURSDAY UPGRADE LIVE")
-send_telegram("🚀 THURSDAY UPGRADE LIVE")
+    send_telegram("🚀 THURSDAY UPGRADE LIVE")
 
     while True:
         try:
