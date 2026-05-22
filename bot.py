@@ -18,10 +18,10 @@ COOLDOWN_SECONDS = 300
 
 TICKERS = [
     "WOK","MULN","SINT","FFIE","NKLA","SNDL","TLRY","FUBO","OPEN","QS",
-    "AMC","GME","CVNA","UPST","SOFI","HOOD","AFRM","DKNG",
-    "MARA","RIOT","COIN",
-    "AI","PLTR",
-    "LCID","RIVN","NIO","XPEV"
+    "AMC","GME","CVNA","UPST","SOFI","HOOD","AFRM","DKNG", "MARA",
+    "RIOT","COIN", "AI","PLTR", "LCID","RIVN","NIO","XPEV" , "BB","BYND",
+    "CLOV","BBBYQ","SPCE", "IONQ","SOUN","BBAI","SMCI","TEM", "ACHR","JOBY",
+    "HIMS","RDDT","ARM", "ASTS","RKLB","ENVX","CHPT","GRAB", "SNAP","PINS","SHOP"
 ]
 
 # =========================
