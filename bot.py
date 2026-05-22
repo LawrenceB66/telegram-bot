@@ -1,7 +1,6 @@
 import time
 import requests
 import os
-from collections import deque
 
 # =========================
 # CONFIG (ENV VARIABLES)
@@ -11,17 +10,11 @@ TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
-# =========================
-# STRATEGY SETTINGS (BALANCED)
-# =========================
-
-WINDOW_SIZE = 6            # ~3 minutes (6 x 30s loops)
-ALERT_THRESHOLD = 2.5      # % move over window
-COOLDOWN_SECONDS = 300     # 5 min cooldown
-
-# =========================
-# WATCHLIST
-# =========================
+# 🔥 REFINED THRESHOLDS
+MIN_MOVE_PCT = 3.5          # Ignore weak moves
+STRONG_MOVE_PCT = 6.0       # Strong momentum
+CHECK_INTERVAL = 30         # seconds
+COOLDOWN_SECONDS = 300      # 5 min per ticker
 
 TICKERS = [
     "WOK","MULN","SINT","FFIE","NKLA","SNDL","TLRY","FUBO","OPEN","QS",
@@ -35,7 +28,7 @@ TICKERS = [
 # STATE
 # =========================
 
-price_history = {symbol: deque(maxlen=WINDOW_SIZE) for symbol in TICKERS}
+price_history = {}
 last_alert_time = {}
 
 # =========================
@@ -68,50 +61,69 @@ def get_price(symbol):
         return None
 
 # =========================
-# ENGINE LOGIC (BALANCED)
+# CORE ENGINE (REFINED)
 # =========================
 
-def analyze_symbol(symbol, price):
+def check_signal(symbol, price):
     current_time = time.time()
-    history = price_history[symbol]
 
-    history.append(price)
-
-    # Wait until we have full window
-    if len(history) < WINDOW_SIZE:
+    # Initialize history
+    if symbol not in price_history:
+        price_history[symbol] = [(current_time, price)]
         return
 
-    oldest = history[0]
-    newest = history[-1]
+    # Append latest price
+    price_history[symbol].append((current_time, price))
 
-    if not oldest or oldest == 0:
+    # Keep only last 5 minutes of data
+    price_history[symbol] = [
+        (t, p) for (t, p) in price_history[symbol]
+        if current_time - t <= 300
+    ]
+
+    # Need at least 2 points
+    if len(price_history[symbol]) < 2:
         return
 
-    change_pct = ((newest - oldest) / oldest) * 100
+    oldest_time, oldest_price = price_history[symbol][0]
 
-    # Cooldown
+    if not oldest_price or oldest_price == 0:
+        return
+
+    change_pct = ((price - oldest_price) / oldest_price) * 100
+    time_diff = current_time - oldest_time
+
+    # Cooldown check
     if symbol in last_alert_time:
         if current_time - last_alert_time[symbol] < COOLDOWN_SECONDS:
             return
 
     # =========================
-    # ALERTS
+    # SIGNAL LOGIC
     # =========================
 
-    if change_pct >= ALERT_THRESHOLD:
-        send_telegram(
-            f"${symbol}\n\n"
-            f"Price: {newest:.2f} • {change_pct:+.2f}%\n\n"
-            f"⚡️ MOMENTUM BUILDING"
-        )
-        last_alert_time[symbol] = current_time
+    label = None
+    emoji = ""
 
-    elif change_pct <= -ALERT_THRESHOLD:
-        send_telegram(
+    # ⚡ FAST MOMENTUM (quick move)
+    if abs(change_pct) >= MIN_MOVE_PCT and time_diff <= 120:
+        label = "MOMENTUM BUILDING"
+        emoji = "⚡"
+
+    # 🔥 STRONG PRESSURE (bigger move over time)
+    if abs(change_pct) >= STRONG_MOVE_PCT:
+        label = "PRESSURE"
+        emoji = "🔥"
+
+    if label:
+        direction = "+" if change_pct > 0 else ""
+        message = (
             f"${symbol}\n\n"
-            f"Price: {newest:.2f} • {change_pct:+.2f}%\n\n"
-            f"🩸 BLEEDING TREND"
+            f"Price: {price:.2f} • {direction}{change_pct:.2f}%\n\n"
+            f"{emoji} {label}"
         )
+
+        send_telegram(message)
         last_alert_time[symbol] = current_time
 
 # =========================
@@ -119,20 +131,21 @@ def analyze_symbol(symbol, price):
 # =========================
 
 def run():
-    print("IAL ENGINE v2 - BALANCED MODE ACTIVE")
+    print("IAL ENGINE V2 - BALANCED MODE ACTIVE")
 
     while True:
         try:
             for symbol in TICKERS:
                 price = get_price(symbol)
                 if price:
-                    analyze_symbol(symbol, price)
+                    check_signal(symbol, price)
 
-            time.sleep(30)
+            time.sleep(CHECK_INTERVAL)
 
         except Exception as e:
             print(f"MAIN LOOP ERROR: {e}")
             time.sleep(10)
+
 
 # =========================
 # START
