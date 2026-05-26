@@ -17,6 +17,11 @@ TG_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 SYMBOLS = ["AMC", "CVNA", "UPST"]
 
 # =========================
+# STATE TRACKING (MEMORY)
+# =========================
+symbol_states = {symbol: "BASELINE" for symbol in SYMBOLS}
+
+# =========================
 # TELEGRAM FUNCTION
 # =========================
 def send_telegram_message(message):
@@ -37,17 +42,44 @@ def get_quote(symbol):
     try:
         url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
         response = requests.get(url, timeout=10)
-        data = response.json()
-        return data
+        return response.json()
     except Exception as e:
         print(f"ERROR FETCHING {symbol}:", e)
         return None
 
 # =========================
+# STATE LOGIC
+# =========================
+def determine_state(change_pct):
+    if abs(change_pct) < 2:
+        return "BASELINE"
+    elif abs(change_pct) < 5:
+        return "BUILDING"
+    else:
+        return "LOADED"
+
+# =========================
+# FORMAT ALERT
+# =========================
+def format_alert(symbol, price, change_pct, state):
+    emoji_map = {
+        "BASELINE": "🧊",
+        "BUILDING": "🔥",
+        "LOADED": "💣"
+    }
+
+    return (
+        f"{symbol}\n"
+        f"Price: {price:.2f}\n"
+        f"Change: {change_pct:.2f}%\n\n"
+        f"{emoji_map[state]} {state}"
+    )
+
+# =========================
 # MAIN LOOP
 # =========================
 def run_bot():
-    print("BOT STARTED")
+    print("STATE ENGINE ACTIVE")
 
     while True:
         for symbol in SYMBOLS:
@@ -63,22 +95,21 @@ def run_bot():
                 continue
 
             change_pct = ((price - prev_close) / prev_close) * 100
+            new_state = determine_state(change_pct)
+            old_state = symbol_states[symbol]
 
-            print(f"{symbol} | Price: {price} | Change: {change_pct:.2f}%")
+            print(f"{symbol} | {change_pct:.2f}% | {old_state} → {new_state}")
 
             # =========================
-            # TEMP ALERT CONDITION
+            # ONLY ALERT ON STATE CHANGE
             # =========================
-            if abs(change_pct) > 2:
-                message = (
-                    f"{symbol}\n"
-                    f"Price: {price:.2f}\n"
-                    f"Change: {change_pct:.2f}%\n\n"
-                    f"TEST ALERT 🚨 {time.time()}"
-                )
-
+            if new_state != old_state:
+                message = format_alert(symbol, price, change_pct, new_state)
                 send_telegram_message(message)
-                print(f"ALERT SENT: {symbol}")
+                print(f"STATE CHANGE ALERT: {symbol} → {new_state}")
+
+                # update memory
+                symbol_states[symbol] = new_state
 
         time.sleep(60)
 
