@@ -1,205 +1,139 @@
 import requests
 import time
+import os
 
 # =========================
 # ENV VARIABLES
 # =========================
-TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-CHANNEL_ID = "YOUR_CHANNEL_ID"
+TOKEN = os.getenv("TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
-FINNHUB_API_KEY = "YOUR_FINNHUB_API_KEY"
-FMP_API_KEY = "YOUR_FMP_API_KEY"
-
-BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-
-WATCHLIST = ["AMC", "CVNA", "UPST"]
+TG_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
 # =========================
-# STATE MEMORY (LOCKED)
+# WATCHLIST
 # =========================
-state_memory = {}
+SYMBOLS = ["AMC", "CVNA", "UPST"]
 
 # =========================
-# DATA FETCHING
+# STATE TRACKING
 # =========================
-def get_price_data(symbol):
+symbol_states = {symbol: "BASELINE" for symbol in SYMBOLS}
+last_alert_time = {symbol: 0 for symbol in SYMBOLS}
+
+COOLDOWN_SECONDS = 300  # 5 minutes
+
+# =========================
+# TELEGRAM FUNCTION
+# =========================
+def send_telegram_message(message):
+    try:
+        payload = {
+            "chat_id": CHAT_ID,
+            "text": message
+        }
+        response = requests.post(TG_URL, data=payload, timeout=10)
+        print("TELEGRAM RESPONSE:", response.text)
+    except Exception as e:
+        print("TELEGRAM ERROR:", e)
+
+# =========================
+# GET STOCK DATA
+# =========================
+def get_quote(symbol):
     try:
         url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
-        r = requests.get(url).json()
-        return r.get("c"), r.get("dp")
-    except:
-        return None, None
-
-def get_si_dtc(symbol):
-    try:
-        url = f"https://financialmodelingprep.com/api/v4/short_interest?symbol={symbol}&apikey={FMP_API_KEY}"
-        r = requests.get(url).json()
-
-        if isinstance(r, list) and len(r) > 0:
-            si = r[0].get("shortPercentFloat", 0)
-            dtc = r[0].get("daysToCover", 0)
-            return si, dtc
-    except:
-        pass
-
-    return 0, 0
-
-# =========================
-# STRUCTURE VALIDATION (LOCKED — YOUR RULES)
-# =========================
-def validate_structure(si, dtc, state):
-    if state == "BUILDING":
-        return si >= 15 and dtc >= 3
-    elif state == "LOADED":
-        return si >= 20 and dtc >= 5
-    return False
-
-# =========================
-# STATE ENGINE (LOCKED)
-# =========================
-def get_state(symbol, pct_change):
-    prev_state = state_memory.get(symbol, "BASELINE")
-
-    if pct_change >= 5:
-        new_state = "LOADED"
-    elif pct_change >= 2:
-        new_state = "BUILDING"
-    else:
-        new_state = "BASELINE"
-
-    return prev_state, new_state
-
-# =========================
-# SIGNAL MAPPING (LOCKED)
-# =========================
-def get_signal(state):
-    if state == "BUILDING":
-        return "🔥 Pressure Cooker"
-    elif state == "LOADED":
-        return "💣 Ticking Time Bomb"
-    return None
-
-# =========================
-# VOLUME CLASSIFICATION
-# =========================
-def get_volume_label(pct_change):
-    if pct_change >= 5:
-        return "EXPANDING"
-    elif pct_change >= 2:
-        return "ELEVATED"
-    return "NORMAL"
-
-# =========================
-# READ BLOCK (LOCKED)
-# =========================
-def get_read(state):
-    if state == "BUILDING":
-        return ("Short pressure is actively building. "
-                "Liquidity and positioning are tightening. "
-                "This is where setups begin forming — attention required.")
-    elif state == "LOADED":
-        return ("Pressure conditions are fully developed. "
-                "Positioning is constrained and unstable. "
-                "High potential for volatility expansion.")
-    return None
-
-# =========================
-# MESSAGE FORMAT (LOCKED — EXACT TEMPLATE)
-# =========================
-def format_message(symbol, price, pct, signal, si, dtc, volume, state, read):
-
-    price_str = f"{price:.2f}".rstrip('0').rstrip('.')
-
-    msg = f"{symbol}\n\n"
-    msg += f"Price: {price_str} • {pct:.2f}%\n\n"
-
-    msg += f"{signal}\n\n"
-
-    msg += f"Structure:\n"
-    msg += f"SI: {int(si)}% • DTC: {int(dtc)}\n"
-    msg += f"Volume: {volume}\n\n"
-
-    msg += f"State: {state}\n\n"
-
-    msg += f"READ:\n{read}"
-
-    return msg
-
-# =========================
-# TELEGRAM SEND
-# =========================
-def send_telegram(message):
-    try:
-        requests.post(BASE_URL, json={
-            "chat_id": CHANNEL_ID,
-            "text": message
-        })
+        response = requests.get(url, timeout=10)
+        return response.json()
     except Exception as e:
-        print("Telegram error:", e)
+        print(f"ERROR FETCHING {symbol}:", e)
+        return None
 
 # =========================
-# MAIN LOOP (LOCKED FLOW)
+# STATE LOGIC
+# =========================
+def determine_state(change_pct):
+    if abs(change_pct) < 2:
+        return "BASELINE"
+    elif abs(change_pct) < 5:
+        return "BUILDING"
+    else:
+        return "LOADED"
+
+# =========================
+# STATE RANK (FOR DIRECTION)
+# =========================
+state_rank = {
+    "BASELINE": 0,
+    "BUILDING": 1,
+    "LOADED": 2
+}
+
+# =========================
+# FORMAT ALERT
+# =========================
+def format_alert(symbol, price, change_pct, state):
+    emoji_map = {
+        "BASELINE": "🧊",
+        "BUILDING": "🔥",
+        "LOADED": "💣"
+    }
+
+    return (
+        f"{symbol}\n"
+        f"Price: {price:.2f}\n"
+        f"Change: {change_pct:.2f}%\n\n"
+        f"{emoji_map[state]} {state}"
+    )
+
+# =========================
+# MAIN LOOP
 # =========================
 def run_bot():
-    print("BOT STARTED")
+    print("LOCKED STATE ENGINE ACTIVE")
 
     while True:
-        for symbol in WATCHLIST:
+        for symbol in SYMBOLS:
+            data = get_quote(symbol)
 
-            price, pct = get_price_data(symbol)
-            if price is None or pct is None:
+            if not data:
                 continue
 
-            si, dtc = get_si_dtc(symbol)
-            prev_state, state = get_state(symbol, pct)
+            price = data.get("c")
+            prev_close = data.get("pc")
+
+            if not price or not prev_close:
+                continue
+
+            change_pct = ((price - prev_close) / prev_close) * 100
+            new_state = determine_state(change_pct)
+            old_state = symbol_states[symbol]
+
+            print(f"{symbol} | {change_pct:.2f}% | {old_state} → {new_state}")
+
+            current_time = time.time()
 
             # =========================
-            # 🔍 DEBUG — PROVE STRUCTURE INPUT
+            # CONDITIONS TO ALERT
             # =========================
-            print("------")
-            print("SYMBOL:", symbol)
-            print("PRICE CHANGE:", pct)
-            print("SI:", si)
-            print("DTC:", dtc)
-            print("STATE:", state)
-            print("STRUCTURE PASS:", validate_structure(si, dtc, state))
-            print("------")
+            is_state_upgrade = state_rank[new_state] > state_rank[old_state]
+            cooldown_passed = (current_time - last_alert_time[symbol]) > COOLDOWN_SECONDS
 
-            # =========================
-            # HARD RULES
-            # =========================
+            if is_state_upgrade and cooldown_passed:
+                message = format_alert(symbol, price, change_pct, new_state)
+                send_telegram_message(message)
 
-            if state == "BASELINE":
-                continue
+                print(f"UPGRADE ALERT: {symbol} → {new_state}")
 
-            if not validate_structure(si, dtc, state):
-                continue
+                symbol_states[symbol] = new_state
+                last_alert_time[symbol] = current_time
 
-            if state == prev_state:
-                continue
+            else:
+                # Update state silently (no alert on downgrade)
+                symbol_states[symbol] = new_state
 
-            signal = get_signal(state)
-            if signal is None:
-                continue
-
-            volume = get_volume_label(pct)
-            read = get_read(state)
-
-            message = format_message(
-                symbol, price, pct, signal,
-                si, dtc, volume, state, read
-            )
-
-            send_telegram(message)
-
-            # 🔒 MEMORY UPDATE (CRITICAL — DO NOT MOVE)
-            state_memory[symbol] = state
-
-            print(f"ALERT: {symbol} → {state}")
-
-            time.sleep(1)
-
-        time.sleep(30)
+        time.sleep(60)
 
 # =========================
 # RUN
