@@ -12,12 +12,31 @@ FMP_API_KEY = "YOUR_FMP_API_KEY"
 
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
-WATCHLIST = ["AMC", "CVNA", "UPST"]
+# =========================
+# WATCHLIST (RESTORE YOUR FULL LIST HERE)
+# =========================
+WATCHLIST = [
+    "AMC", "GME", "CVNA", "UPST", "AI", "NVDA", "TSLA", "PLTR",
+    "MARA", "RIOT", "COIN", "HOOD", "SOFI", "LCID", "RIVN",
+    "AAPL", "MSFT", "META", "AMZN", "GOOGL"
+    # 🔒 ADD YOUR FULL 50 TICKERS — DO NOT TRIM
+]
 
 # =========================
 # STATE MEMORY (LOCKED)
 # =========================
 state_memory = {}
+
+# =========================
+# 🔒 SYSTEM LOCKS — DO NOT MODIFY
+# =========================
+# STATE MEMORY MUST UPDATE INSIDE get_state()
+# SIGNAL = STATE (NOT PRICE)
+# STRUCTURE REQUIRED (SI + DTC)
+# STATE CHANGE REQUIRED
+# NO REPEAT ALERTS
+# MESSAGE FORMAT IS FIXED
+# =========================
 
 # =========================
 # DATA FETCHING
@@ -45,7 +64,7 @@ def get_si_dtc(symbol):
     return 0, 0
 
 # =========================
-# STATE ENGINE (LOCKED — DO NOT MOVE MEMORY WRITE)
+# STATE ENGINE (LOCKED)
 # =========================
 def get_state(symbol, pct_change):
     prev_state = state_memory.get(symbol, "BASELINE")
@@ -57,13 +76,11 @@ def get_state(symbol, pct_change):
     else:
         new_state = "BASELINE"
 
-    # 🔒 CRITICAL — MUST STAY HERE
     state_memory[symbol] = new_state
-
     return prev_state, new_state
 
 # =========================
-# STRUCTURE VALIDATION (YOUR RULES)
+# STRUCTURE RULES (LOCKED)
 # =========================
 def validate_structure(si, dtc, state):
     if state == "BUILDING":
@@ -83,7 +100,7 @@ def get_signal(state):
     return None
 
 # =========================
-# VOLUME CLASSIFICATION
+# VOLUME (LOCKED)
 # =========================
 def get_volume_label(state):
     if state == "LOADED":
@@ -93,7 +110,7 @@ def get_volume_label(state):
     return "NORMAL"
 
 # =========================
-# READ BLOCK (STATIC — DO NOT CHANGE)
+# READ TEXT (STATIC — LOCKED)
 # =========================
 def get_read(state):
     if state == "BUILDING":
@@ -107,23 +124,18 @@ def get_read(state):
     return None
 
 # =========================
-# MESSAGE FORMAT (LOCKED — EXACT STRUCTURE)
+# MESSAGE FORMAT (LOCKED)
 # =========================
 def format_message(symbol, price, pct, signal, si, dtc, volume, state, read):
-
     price_str = f"{price:.2f}".rstrip('0').rstrip('.')
 
     msg = f"{symbol}\n\n"
     msg += f"Price: {price_str} • {pct:.2f}%\n\n"
-
     msg += f"{signal}\n\n"
-
     msg += f"Structure:\n"
     msg += f"SI: {int(si)}% • DTC: {int(dtc)}\n"
     msg += f"Volume: {volume}\n\n"
-
     msg += f"State: {state}\n\n"
-
     msg += f"READ:\n{read}"
 
     return msg
@@ -141,9 +153,11 @@ def send_telegram(message):
         print("Telegram error:", e)
 
 # =========================
-# MAIN LOOP (LOCKED FLOW)
+# MAIN LOOP
 # =========================
 def run_bot():
+    print("BOT STARTED")
+
     while True:
         for symbol in WATCHLIST:
 
@@ -155,15 +169,12 @@ def run_bot():
 
             prev_state, state = get_state(symbol, pct)
 
-            # BASELINE = NO ALERT
             if state == "BASELINE":
                 continue
 
-            # STRUCTURE REQUIRED
             if not validate_structure(si, dtc, state):
                 continue
 
-            # STATE CHANGE REQUIRED
             if state == prev_state:
                 continue
 
