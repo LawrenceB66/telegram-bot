@@ -17,9 +17,12 @@ TG_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 SYMBOLS = ["AMC", "CVNA", "UPST"]
 
 # =========================
-# STATE TRACKING (MEMORY)
+# STATE TRACKING
 # =========================
 symbol_states = {symbol: "BASELINE" for symbol in SYMBOLS}
+last_alert_time = {symbol: 0 for symbol in SYMBOLS}
+
+COOLDOWN_SECONDS = 300  # 5 minutes
 
 # =========================
 # TELEGRAM FUNCTION
@@ -59,6 +62,15 @@ def determine_state(change_pct):
         return "LOADED"
 
 # =========================
+# STATE RANK (FOR DIRECTION)
+# =========================
+state_rank = {
+    "BASELINE": 0,
+    "BUILDING": 1,
+    "LOADED": 2
+}
+
+# =========================
 # FORMAT ALERT
 # =========================
 def format_alert(symbol, price, change_pct, state):
@@ -79,7 +91,7 @@ def format_alert(symbol, price, change_pct, state):
 # MAIN LOOP
 # =========================
 def run_bot():
-    print("STATE ENGINE ACTIVE")
+    print("LOCKED STATE ENGINE ACTIVE")
 
     while True:
         for symbol in SYMBOLS:
@@ -100,15 +112,25 @@ def run_bot():
 
             print(f"{symbol} | {change_pct:.2f}% | {old_state} → {new_state}")
 
+            current_time = time.time()
+
             # =========================
-            # ONLY ALERT ON STATE CHANGE
+            # CONDITIONS TO ALERT
             # =========================
-            if new_state != old_state:
+            is_state_upgrade = state_rank[new_state] > state_rank[old_state]
+            cooldown_passed = (current_time - last_alert_time[symbol]) > COOLDOWN_SECONDS
+
+            if is_state_upgrade and cooldown_passed:
                 message = format_alert(symbol, price, change_pct, new_state)
                 send_telegram_message(message)
-                print(f"STATE CHANGE ALERT: {symbol} → {new_state}")
 
-                # update memory
+                print(f"UPGRADE ALERT: {symbol} → {new_state}")
+
+                symbol_states[symbol] = new_state
+                last_alert_time[symbol] = current_time
+
+            else:
+                # Update state silently (no alert on downgrade)
                 symbol_states[symbol] = new_state
 
         time.sleep(60)
