@@ -1,6 +1,5 @@
 import requests
 import time
-from datetime import datetime
 
 # =========================
 # ENV VARIABLES
@@ -46,7 +45,7 @@ def get_si_dtc(symbol):
     return 0, 0
 
 # =========================
-# STRUCTURE VALIDATION (UPDATED — HARDENED)
+# STRUCTURE VALIDATION (HARDENED)
 # =========================
 def validate_structure(si, dtc, state):
     if state == "BUILDING":
@@ -113,20 +112,15 @@ def get_read(state):
 # MESSAGE FORMAT (LOCKED)
 # =========================
 def format_message(symbol, price, pct, signal, si, dtc, volume, state, read):
-
     price_str = f"{price:.2f}".rstrip('0').rstrip('.')
 
     msg = f"{symbol}\n\n"
     msg += f"Price: {price_str} • {pct:.2f}%\n\n"
-
     msg += f"{signal}\n\n"
-
     msg += f"Structure:\n"
     msg += f"SI: {int(si)}% • DTC: {int(dtc)}\n"
     msg += f"Volume: {volume}\n\n"
-
     msg += f"State: {state}\n\n"
-
     msg += f"READ:\n{read}"
 
     return msg
@@ -158,15 +152,12 @@ def run():
 
             prev_state, state = get_state(symbol, pct)
 
-            # BASELINE = NO ALERT
             if state == "BASELINE":
                 continue
 
-            # 🔒 STRUCTURE FILTER (UPDATED)
             if not validate_structure(si, dtc, state):
                 continue
 
-            # STATE CHANGE ONLY
             if state == prev_state:
                 continue
 
@@ -190,7 +181,4 @@ def run():
 
         time.sleep(30)
 
-# =========================
-# START
-# =========================
 run()
