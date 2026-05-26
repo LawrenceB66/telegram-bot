@@ -55,7 +55,7 @@ def validate_structure(si, dtc, state):
     return False
 
 # =========================
-# STATE ENGINE (LOCKED)
+# STATE ENGINE (FIXED MEMORY FLOW)
 # =========================
 def get_state(symbol, pct_change):
     prev_state = state_memory.get(symbol, "BASELINE")
@@ -67,7 +67,6 @@ def get_state(symbol, pct_change):
     else:
         new_state = "BASELINE"
 
-    state_memory[symbol] = new_state
     return prev_state, new_state
 
 # =========================
@@ -139,7 +138,7 @@ def send_telegram(message):
 # =========================
 # MAIN LOOP (LOCKED FLOW)
 # =========================
-def run():
+def run_bot():
     while True:
         for symbol in WATCHLIST:
 
@@ -174,6 +173,9 @@ def run():
 
             send_telegram(message)
 
+            # 🔒 UPDATE MEMORY ONLY AFTER CONFIRMED ALERT
+            state_memory[symbol] = state
+
             print(f"ALERT: {symbol} → {state}")
 
             time.sleep(1)
@@ -184,4 +186,4 @@ def run():
 # RUN
 # =========================
 if __name__ == "__main__":
-    run()
+    run_bot()
