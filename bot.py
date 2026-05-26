@@ -1,3 +1,5 @@
+print("FILE LOADED")
+
 import requests
 import time
 
