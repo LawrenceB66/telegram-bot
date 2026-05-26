@@ -45,17 +45,7 @@ def get_si_dtc(symbol):
     return 0, 0
 
 # =========================
-# STRUCTURE VALIDATION (HARDENED)
-# =========================
-def validate_structure(si, dtc, state):
-    if state == "BUILDING":
-        return si >= 20 and dtc >= 4
-    elif state == "LOADED":
-        return si >= 25 and dtc >= 6
-    return False
-
-# =========================
-# STATE ENGINE (FIXED MEMORY FLOW)
+# STATE ENGINE (LOCKED — DO NOT MOVE MEMORY WRITE)
 # =========================
 def get_state(symbol, pct_change):
     prev_state = state_memory.get(symbol, "BASELINE")
@@ -67,7 +57,20 @@ def get_state(symbol, pct_change):
     else:
         new_state = "BASELINE"
 
+    # 🔒 CRITICAL — MUST STAY HERE
+    state_memory[symbol] = new_state
+
     return prev_state, new_state
+
+# =========================
+# STRUCTURE VALIDATION (YOUR RULES)
+# =========================
+def validate_structure(si, dtc, state):
+    if state == "BUILDING":
+        return si >= 15 and dtc >= 3
+    elif state == "LOADED":
+        return si >= 20 and dtc >= 5
+    return False
 
 # =========================
 # SIGNAL MAPPING (LOCKED)
@@ -77,22 +80,20 @@ def get_signal(state):
         return "🔥 Pressure Cooker"
     elif state == "LOADED":
         return "💣 Ticking Time Bomb"
-    else:
-        return None
+    return None
 
 # =========================
 # VOLUME CLASSIFICATION
 # =========================
-def get_volume_label(pct_change):
-    if pct_change >= 5:
+def get_volume_label(state):
+    if state == "LOADED":
         return "EXPANDING"
-    elif pct_change >= 2:
+    elif state == "BUILDING":
         return "ELEVATED"
-    else:
-        return "NORMAL"
+    return "NORMAL"
 
 # =========================
-# READ BLOCK (LOCKED)
+# READ BLOCK (STATIC — DO NOT CHANGE)
 # =========================
 def get_read(state):
     if state == "BUILDING":
@@ -103,22 +104,26 @@ def get_read(state):
         return ("Pressure conditions are fully developed. "
                 "Positioning is constrained and unstable. "
                 "High potential for volatility expansion.")
-    else:
-        return None
+    return None
 
 # =========================
-# MESSAGE FORMAT (LOCKED)
+# MESSAGE FORMAT (LOCKED — EXACT STRUCTURE)
 # =========================
 def format_message(symbol, price, pct, signal, si, dtc, volume, state, read):
+
     price_str = f"{price:.2f}".rstrip('0').rstrip('.')
 
     msg = f"{symbol}\n\n"
     msg += f"Price: {price_str} • {pct:.2f}%\n\n"
+
     msg += f"{signal}\n\n"
+
     msg += f"Structure:\n"
     msg += f"SI: {int(si)}% • DTC: {int(dtc)}\n"
     msg += f"Volume: {volume}\n\n"
+
     msg += f"State: {state}\n\n"
+
     msg += f"READ:\n{read}"
 
     return msg
@@ -150,12 +155,15 @@ def run_bot():
 
             prev_state, state = get_state(symbol, pct)
 
+            # BASELINE = NO ALERT
             if state == "BASELINE":
                 continue
 
+            # STRUCTURE REQUIRED
             if not validate_structure(si, dtc, state):
                 continue
 
+            # STATE CHANGE REQUIRED
             if state == prev_state:
                 continue
 
@@ -163,7 +171,7 @@ def run_bot():
             if signal is None:
                 continue
 
-            volume = get_volume_label(pct)
+            volume = get_volume_label(state)
             read = get_read(state)
 
             message = format_message(
@@ -172,9 +180,6 @@ def run_bot():
             )
 
             send_telegram(message)
-
-            # 🔒 UPDATE MEMORY ONLY AFTER CONFIRMED ALERT
-            state_memory[symbol] = state
 
             print(f"ALERT: {symbol} → {state}")
 
