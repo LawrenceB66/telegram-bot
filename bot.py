@@ -46,15 +46,17 @@ def get_si_dtc(symbol):
     return 0, 0
 
 # =========================
-# STRUCTURE VALIDATION (LOCKED)
+# STRUCTURE VALIDATION (UPDATED — HARDENED)
 # =========================
-def validate_structure(si, dtc):
-    if si >= 15 and dtc >= 3:
-        return True
+def validate_structure(si, dtc, state):
+    if state == "BUILDING":
+        return si >= 20 and dtc >= 4
+    elif state == "LOADED":
+        return si >= 25 and dtc >= 6
     return False
 
 # =========================
-# STATE ENGINE (LOCKED)
+# STATE ENGINE (UNCHANGED)
 # =========================
 def get_state(symbol, pct_change):
     prev_state = state_memory.get(symbol, "BASELINE")
@@ -82,7 +84,7 @@ def get_signal(state):
         return None
 
 # =========================
-# VOLUME CLASSIFICATION (SIMPLE LOCK)
+# VOLUME CLASSIFICATION
 # =========================
 def get_volume_label(pct_change):
     if pct_change >= 5:
@@ -93,7 +95,7 @@ def get_volume_label(pct_change):
         return "NORMAL"
 
 # =========================
-# READ BLOCK (LOCKED LANGUAGE)
+# READ BLOCK (LOCKED)
 # =========================
 def get_read(state):
     if state == "BUILDING":
@@ -108,7 +110,7 @@ def get_read(state):
         return None
 
 # =========================
-# MESSAGE FORMAT (EXACT STRUCTURE)
+# MESSAGE FORMAT (LOCKED)
 # =========================
 def format_message(symbol, price, pct, signal, si, dtc, volume, state, read):
 
@@ -154,13 +156,17 @@ def run():
 
             si, dtc = get_si_dtc(symbol)
 
-            # STRUCTURE FILTER (HARD RULE)
-            if not validate_structure(si, dtc):
-                continue
-
             prev_state, state = get_state(symbol, pct)
 
-            # ONLY FIRE ON STATE CHANGE
+            # BASELINE = NO ALERT
+            if state == "BASELINE":
+                continue
+
+            # 🔒 STRUCTURE FILTER (UPDATED)
+            if not validate_structure(si, dtc, state):
+                continue
+
+            # STATE CHANGE ONLY
             if state == prev_state:
                 continue
 
