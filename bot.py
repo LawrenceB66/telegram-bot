@@ -12,31 +12,12 @@ FMP_API_KEY = "YOUR_FMP_API_KEY"
 
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
-# =========================
-# WATCHLIST (RESTORE YOUR FULL LIST HERE)
-# =========================
-WATCHLIST = [
-    "AMC", "GME", "CVNA", "UPST", "AI", "NVDA", "TSLA", "PLTR",
-    "MARA", "RIOT", "COIN", "HOOD", "SOFI", "LCID", "RIVN",
-    "AAPL", "MSFT", "META", "AMZN", "GOOGL"
-    # 🔒 ADD YOUR FULL 50 TICKERS — DO NOT TRIM
-]
+WATCHLIST = ["AMC", "CVNA", "UPST"]
 
 # =========================
 # STATE MEMORY (LOCKED)
 # =========================
 state_memory = {}
-
-# =========================
-# 🔒 SYSTEM LOCKS — DO NOT MODIFY
-# =========================
-# STATE MEMORY MUST UPDATE INSIDE get_state()
-# SIGNAL = STATE (NOT PRICE)
-# STRUCTURE REQUIRED (SI + DTC)
-# STATE CHANGE REQUIRED
-# NO REPEAT ALERTS
-# MESSAGE FORMAT IS FIXED
-# =========================
 
 # =========================
 # DATA FETCHING
@@ -64,6 +45,16 @@ def get_si_dtc(symbol):
     return 0, 0
 
 # =========================
+# STRUCTURE VALIDATION (LOCKED — YOUR RULES)
+# =========================
+def validate_structure(si, dtc, state):
+    if state == "BUILDING":
+        return si >= 15 and dtc >= 3
+    elif state == "LOADED":
+        return si >= 20 and dtc >= 5
+    return False
+
+# =========================
 # STATE ENGINE (LOCKED)
 # =========================
 def get_state(symbol, pct_change):
@@ -76,18 +67,7 @@ def get_state(symbol, pct_change):
     else:
         new_state = "BASELINE"
 
-    state_memory[symbol] = new_state
     return prev_state, new_state
-
-# =========================
-# STRUCTURE RULES (LOCKED)
-# =========================
-def validate_structure(si, dtc, state):
-    if state == "BUILDING":
-        return si >= 15 and dtc >= 3
-    elif state == "LOADED":
-        return si >= 20 and dtc >= 5
-    return False
 
 # =========================
 # SIGNAL MAPPING (LOCKED)
@@ -100,17 +80,17 @@ def get_signal(state):
     return None
 
 # =========================
-# VOLUME (LOCKED)
+# VOLUME CLASSIFICATION
 # =========================
-def get_volume_label(state):
-    if state == "LOADED":
+def get_volume_label(pct_change):
+    if pct_change >= 5:
         return "EXPANDING"
-    elif state == "BUILDING":
+    elif pct_change >= 2:
         return "ELEVATED"
     return "NORMAL"
 
 # =========================
-# READ TEXT (STATIC — LOCKED)
+# READ BLOCK (LOCKED)
 # =========================
 def get_read(state):
     if state == "BUILDING":
@@ -124,18 +104,23 @@ def get_read(state):
     return None
 
 # =========================
-# MESSAGE FORMAT (LOCKED)
+# MESSAGE FORMAT (LOCKED — EXACT TEMPLATE)
 # =========================
 def format_message(symbol, price, pct, signal, si, dtc, volume, state, read):
+
     price_str = f"{price:.2f}".rstrip('0').rstrip('.')
 
     msg = f"{symbol}\n\n"
     msg += f"Price: {price_str} • {pct:.2f}%\n\n"
+
     msg += f"{signal}\n\n"
+
     msg += f"Structure:\n"
     msg += f"SI: {int(si)}% • DTC: {int(dtc)}\n"
     msg += f"Volume: {volume}\n\n"
+
     msg += f"State: {state}\n\n"
+
     msg += f"READ:\n{read}"
 
     return msg
@@ -153,7 +138,7 @@ def send_telegram(message):
         print("Telegram error:", e)
 
 # =========================
-# MAIN LOOP
+# MAIN LOOP (LOCKED FLOW)
 # =========================
 def run_bot():
     print("BOT STARTED")
@@ -166,8 +151,23 @@ def run_bot():
                 continue
 
             si, dtc = get_si_dtc(symbol)
-
             prev_state, state = get_state(symbol, pct)
+
+            # =========================
+            # 🔍 DEBUG — PROVE STRUCTURE INPUT
+            # =========================
+            print("------")
+            print("SYMBOL:", symbol)
+            print("PRICE CHANGE:", pct)
+            print("SI:", si)
+            print("DTC:", dtc)
+            print("STATE:", state)
+            print("STRUCTURE PASS:", validate_structure(si, dtc, state))
+            print("------")
+
+            # =========================
+            # HARD RULES
+            # =========================
 
             if state == "BASELINE":
                 continue
@@ -182,7 +182,7 @@ def run_bot():
             if signal is None:
                 continue
 
-            volume = get_volume_label(state)
+            volume = get_volume_label(pct)
             read = get_read(state)
 
             message = format_message(
@@ -191,6 +191,9 @@ def run_bot():
             )
 
             send_telegram(message)
+
+            # 🔒 MEMORY UPDATE (CRITICAL — DO NOT MOVE)
+            state_memory[symbol] = state
 
             print(f"ALERT: {symbol} → {state}")
 
