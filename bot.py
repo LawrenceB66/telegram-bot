@@ -55,7 +55,7 @@ def validate_structure(si, dtc, state):
     return False
 
 # =========================
-# STATE ENGINE (UNCHANGED)
+# STATE ENGINE (LOCKED)
 # =========================
 def get_state(symbol, pct_change):
     prev_state = state_memory.get(symbol, "BASELINE")
@@ -68,7 +68,6 @@ def get_state(symbol, pct_change):
         new_state = "BASELINE"
 
     state_memory[symbol] = new_state
-
     return prev_state, new_state
 
 # =========================
@@ -181,4 +180,8 @@ def run():
 
         time.sleep(30)
 
-run()
+# =========================
+# RUN
+# =========================
+if __name__ == "__main__":
+    run()
