@@ -15,7 +15,7 @@ FMP_API_KEY = "YOUR_FMP_API_KEY"
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
 # =========================
-# FULL WATCHLIST (RESTORED — EDIT AS NEEDED)
+# FULL WATCHLIST (RESTORED)
 # =========================
 WATCHLIST = [
     "AMC","GME","CVNA","UPST","NVDA","TSLA","AAPL","MSFT","META","AMD",
@@ -56,7 +56,7 @@ def get_si_dtc(symbol):
     return 0, 0
 
 # =========================
-# STRUCTURE VALIDATION (LOCKED TO YOUR RULES)
+# STRUCTURE VALIDATION
 # =========================
 def validate_structure(si, dtc, state):
     if state == "BUILDING":
@@ -66,7 +66,7 @@ def validate_structure(si, dtc, state):
     return False
 
 # =========================
-# STATE ENGINE (LOCKED)
+# STATE ENGINE
 # =========================
 def get_state(symbol, pct_change):
     prev_state = state_memory.get(symbol, "BASELINE")
@@ -81,18 +81,17 @@ def get_state(symbol, pct_change):
     return prev_state, new_state
 
 # =========================
-# SIGNAL MAPPING (LOCKED)
+# SIGNAL MAPPING
 # =========================
 def get_signal(state):
     if state == "BUILDING":
         return "🔥 Pressure Cooker"
     elif state == "LOADED":
         return "💣 Ticking Time Bomb"
-    else:
-        return None
+    return None
 
 # =========================
-# VOLUME CLASSIFICATION (LOCKED)
+# VOLUME CLASSIFICATION
 # =========================
 def get_volume_label(pct_change, state):
     if state == "LOADED":
@@ -102,7 +101,7 @@ def get_volume_label(pct_change, state):
     return "NORMAL"
 
 # =========================
-# READ TEXT (STATIC — LOCKED)
+# READ TEXT (STATIC)
 # =========================
 def get_read(state):
     if state == "BUILDING":
@@ -120,7 +119,7 @@ def get_read(state):
     return None
 
 # =========================
-# MESSAGE FORMAT (LOCKED — NO CHANGES)
+# MESSAGE FORMAT (LOCKED)
 # =========================
 def format_message(symbol, price, pct, signal, si, dtc, volume, state, read):
     price_str = f"{price:.2f}".rstrip('0').rstrip('.')
@@ -149,7 +148,7 @@ def send_telegram(message):
         print("Telegram error:", e)
 
 # =========================
-# MAIN LOOP (FINAL — LOCKED)
+# MAIN LOOP (WITH FULL DEBUG)
 # =========================
 def run_bot():
     print("BOT STARTED")
@@ -157,28 +156,46 @@ def run_bot():
     while True:
         for symbol in WATCHLIST:
 
+            print("-----")
+            print("SYMBOL:", symbol)
+
             price, pct = get_price_data(symbol)
+
+            print("PRICE:", price)
+            print("PCT:", pct)
+
             if price is None or pct is None:
+                print("SKIP: No price data")
                 continue
 
             si, dtc = get_si_dtc(symbol)
 
+            print("SI:", si)
+            print("DTC:", dtc)
+
             prev_state, state = get_state(symbol, pct)
 
-            # BASELINE = NO ALERT
+            print("STATE:", state)
+            print("PREV STATE:", prev_state)
+
             if state == "BASELINE":
+                print("SKIP: Baseline")
                 continue
 
-            # STRUCTURE REQUIRED
-            if not validate_structure(si, dtc, state):
+            structure_pass = validate_structure(si, dtc, state)
+            print("STRUCTURE PASS:", structure_pass)
+
+            if not structure_pass:
+                print("SKIP: Structure fail")
                 continue
 
-            # STATE CHANGE REQUIRED
             if state == prev_state:
+                print("SKIP: No state change")
                 continue
 
             signal = get_signal(state)
             if signal is None:
+                print("SKIP: No signal mapping")
                 continue
 
             volume = get_volume_label(pct, state)
@@ -191,7 +208,6 @@ def run_bot():
 
             send_telegram(message)
 
-            # 🔒 MEMORY UPDATE ONLY AFTER ALERT
             state_memory[symbol] = state
 
             print(f"ALERT: {symbol} → {state}")
@@ -201,7 +217,7 @@ def run_bot():
         time.sleep(30)
 
 # =========================
-# RUN (LOCKED)
+# RUN
 # =========================
 if __name__ == "__main__":
     run_bot()
