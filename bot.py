@@ -44,18 +44,16 @@ def get_price_data(symbol):
         return None, None
 
 # =========================
-# STRUCTURE ENGINE (NEW)
+# STRUCTURE ENGINE
 # =========================
 def check_structure(symbol, pct):
     prev = structure_memory.get(symbol, 0)
 
-    # soft structure conditions
     if 2 <= pct <= 8:
         structure_memory[symbol] = prev + 1
     else:
         structure_memory[symbol] = 0
 
-    # require 2 confirmations
     return structure_memory[symbol] >= 2
 
 # =========================
@@ -72,6 +70,17 @@ def get_state(symbol, pct_change):
         new_state = "BASELINE"
 
     return prev_state, new_state
+
+# =========================
+# STATE RANKING (NEW FIX)
+# =========================
+def state_rank(state):
+    ranks = {
+        "BASELINE": 0,
+        "BUILDING": 1,
+        "LOADED": 2
+    }
+    return ranks.get(state, 0)
 
 # =========================
 # SIGNAL
@@ -149,16 +158,17 @@ def run_bot():
             if price is None:
                 continue
 
-            # 🔒 STRUCTURE CHECK FIRST
+            # STRUCTURE FIRST
             if not check_structure(symbol, pct):
                 continue
 
             prev_state, state = get_state(symbol, pct)
 
-            if state == "BASELINE":
+            # 🚨 BLOCK DOWNGRADES (CRITICAL FIX)
+            if state_rank(state) <= state_rank(prev_state):
                 continue
 
-            if state == prev_state:
+            if state == "BASELINE":
                 continue
 
             signal = get_signal(state)
