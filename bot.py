@@ -1,21 +1,20 @@
-import os
-import requests
-import time
-
 print("FILE LOADED")
 
+import requests
+import time
+import os
+
 # =========================
-# ENV VARIABLES (RAILWAY LINKED — FINAL)
+# ENV VARIABLES (LIVE)
 # =========================
 TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = os.getenv("CHAT_ID")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
-FMP_API_KEY = os.getenv("FMP_API_KEY")
 
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
 # =========================
-# FULL WATCHLIST (RESTORED — EDIT AS NEEDED)
+# WATCHLIST
 # =========================
 WATCHLIST = [
     "AMC","GME","CVNA","UPST","NVDA","TSLA","AAPL","MSFT","META","AMD",
@@ -25,48 +24,31 @@ WATCHLIST = [
     "DKNG","HOOD","AFRM","RUN","ENPH","FSLR","T","VZ","INTC","CSCO"
 ]
 
-# =========================
-# STATE MEMORY (LOCKED)
-# =========================
 state_memory = {}
 
 # =========================
-# DATA FETCHING
+# PRICE DATA (FIXED)
 # =========================
 def get_price_data(symbol):
     try:
         url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
         r = requests.get(url).json()
-        return r.get("c"), r.get("dp")
-    except:
+
+        price = r.get("c")
+        pct = r.get("dp")
+
+        if price is None or pct is None:
+            print(f"SKIP: {symbol} — No price data")
+            return None, None
+
+        return price, pct
+
+    except Exception as e:
+        print(f"ERROR: {symbol} — {e}")
         return None, None
 
-def get_si_dtc(symbol):
-    try:
-        url = f"https://financialmodelingprep.com/api/v4/short_interest?symbol={symbol}&apikey={FMP_API_KEY}"
-        r = requests.get(url).json()
-
-        if isinstance(r, list) and len(r) > 0:
-            si = r[0].get("shortPercentFloat", 0)
-            dtc = r[0].get("daysToCover", 0)
-            return si, dtc
-    except:
-        pass
-
-    return 0, 0
-
 # =========================
-# STRUCTURE VALIDATION (LOCKED TO YOUR RULES)
-# =========================
-def validate_structure(si, dtc, state):
-    if state == "BUILDING":
-        return si >= 15 and dtc >= 3
-    elif state == "LOADED":
-        return si >= 20 and dtc >= 5
-    return False
-
-# =========================
-# STATE ENGINE (LOCKED)
+# STATE ENGINE
 # =========================
 def get_state(symbol, pct_change):
     prev_state = state_memory.get(symbol, "BASELINE")
@@ -81,18 +63,17 @@ def get_state(symbol, pct_change):
     return prev_state, new_state
 
 # =========================
-# SIGNAL MAPPING (LOCKED)
+# SIGNAL MAPPING
 # =========================
 def get_signal(state):
     if state == "BUILDING":
         return "🔥 Pressure Cooker"
     elif state == "LOADED":
         return "💣 Ticking Time Bomb"
-    else:
-        return None
+    return None
 
 # =========================
-# VOLUME CLASSIFICATION (LOCKED)
+# VOLUME
 # =========================
 def get_volume_label(pct_change, state):
     if state == "LOADED":
@@ -102,7 +83,7 @@ def get_volume_label(pct_change, state):
     return "NORMAL"
 
 # =========================
-# READ TEXT (STATIC — LOCKED)
+# READ TEXT
 # =========================
 def get_read(state):
     if state == "BUILDING":
@@ -120,16 +101,14 @@ def get_read(state):
     return None
 
 # =========================
-# MESSAGE FORMAT (LOCKED — NO CHANGES)
+# FORMAT
 # =========================
-def format_message(symbol, price, pct, signal, si, dtc, volume, state, read):
+def format_message(symbol, price, pct, signal, volume, state, read):
     price_str = f"{price:.2f}".rstrip('0').rstrip('.')
 
     msg = f"{symbol}\n\n"
     msg += f"Price: {price_str} • {pct:.2f}%\n\n"
     msg += f"{signal}\n\n"
-    msg += f"Structure:\n"
-    msg += f"SI: {int(si)}% • DTC: {int(dtc)}\n"
     msg += f"Volume: {volume}\n\n"
     msg += f"State: {state}\n\n"
     msg += f"READ:\n{read}"
@@ -137,7 +116,7 @@ def format_message(symbol, price, pct, signal, si, dtc, volume, state, read):
     return msg
 
 # =========================
-# TELEGRAM SEND
+# TELEGRAM
 # =========================
 def send_telegram(message):
     try:
@@ -149,7 +128,7 @@ def send_telegram(message):
         print("Telegram error:", e)
 
 # =========================
-# MAIN LOOP (FINAL — LOCKED)
+# MAIN LOOP
 # =========================
 def run_bot():
     print("BOT STARTED")
@@ -158,18 +137,12 @@ def run_bot():
         for symbol in WATCHLIST:
 
             price, pct = get_price_data(symbol)
-            if price is None or pct is None:
-                print(f"SKIP: {symbol} — No price data")
+            if price is None:
                 continue
-
-            si, dtc = get_si_dtc(symbol)
 
             prev_state, state = get_state(symbol, pct)
 
             if state == "BASELINE":
-                continue
-
-            if not validate_structure(si, dtc, state):
                 continue
 
             if state == prev_state:
@@ -184,7 +157,7 @@ def run_bot():
 
             message = format_message(
                 symbol, price, pct, signal,
-                si, dtc, volume, state, read
+                volume, state, read
             )
 
             send_telegram(message)
@@ -198,7 +171,7 @@ def run_bot():
         time.sleep(30)
 
 # =========================
-# RUN (LOCKED)
+# RUN
 # =========================
 if __name__ == "__main__":
     run_bot()
