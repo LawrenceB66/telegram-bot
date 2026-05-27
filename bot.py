@@ -5,7 +5,7 @@ import time
 import os
 
 # =========================
-# ENV VARIABLES (LIVE)
+# ENV VARIABLES
 # =========================
 TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = os.getenv("CHAT_ID")
@@ -13,9 +13,6 @@ FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
 BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
-# =========================
-# WATCHLIST
-# =========================
 WATCHLIST = [
     "AMC","GME","CVNA","UPST","NVDA","TSLA","AAPL","MSFT","META","AMD",
     "NFLX","GOOGL","AMZN","COIN","PLTR","AI","RIOT","MARA","SOFI","LCID",
@@ -25,9 +22,10 @@ WATCHLIST = [
 ]
 
 state_memory = {}
+structure_memory = {}
 
 # =========================
-# PRICE DATA (FIXED)
+# PRICE DATA
 # =========================
 def get_price_data(symbol):
     try:
@@ -38,14 +36,27 @@ def get_price_data(symbol):
         pct = r.get("dp")
 
         if price is None or pct is None:
-            print(f"SKIP: {symbol} — No price data")
             return None, None
 
         return price, pct
 
-    except Exception as e:
-        print(f"ERROR: {symbol} — {e}")
+    except:
         return None, None
+
+# =========================
+# STRUCTURE ENGINE (NEW)
+# =========================
+def check_structure(symbol, pct):
+    prev = structure_memory.get(symbol, 0)
+
+    # soft structure conditions
+    if 2 <= pct <= 8:
+        structure_memory[symbol] = prev + 1
+    else:
+        structure_memory[symbol] = 0
+
+    # require 2 confirmations
+    return structure_memory[symbol] >= 2
 
 # =========================
 # STATE ENGINE
@@ -63,7 +74,7 @@ def get_state(symbol, pct_change):
     return prev_state, new_state
 
 # =========================
-# SIGNAL MAPPING
+# SIGNAL
 # =========================
 def get_signal(state):
     if state == "BUILDING":
@@ -83,20 +94,18 @@ def get_volume_label(pct_change, state):
     return "NORMAL"
 
 # =========================
-# READ TEXT
+# READ
 # =========================
 def get_read(state):
     if state == "BUILDING":
         return (
-            "Short pressure is actively building. "
-            "Liquidity and positioning are tightening. "
-            "This is where setups begin forming — attention required."
+            "Pressure forming beneath the surface. "
+            "Repeated movement detected — structure building."
         )
     elif state == "LOADED":
         return (
-            "Pressure conditions are fully developed. "
-            "Positioning is constrained and unstable. "
-            "High potential for volatility expansion."
+            "Confirmed pressure expansion. "
+            "Momentum aligned with structure — volatility likely."
         )
     return None
 
@@ -138,6 +147,10 @@ def run_bot():
 
             price, pct = get_price_data(symbol)
             if price is None:
+                continue
+
+            # 🔒 STRUCTURE CHECK FIRST
+            if not check_structure(symbol, pct):
                 continue
 
             prev_state, state = get_state(symbol, pct)
