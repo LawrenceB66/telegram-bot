@@ -19,6 +19,9 @@ WATCHLIST = [
 # STATE TRACKING (CRITICAL)
 # =========================
 STATE_CACHE = {}
+LAST_ALERT_TIME = {}
+
+COOLDOWN_SECONDS = 900  # 15 min
 
 # =========================
 # STATIC READ TEXT (LOCKED)
@@ -54,15 +57,11 @@ def get_price(symbol):
 
 # =========================
 # ⚠️ PLACEHOLDER STRUCTURE
-# (Replace with real SI/DTC source later)
 # =========================
 def get_structure(symbol):
-    # TEMP MOCK (until real API wired)
     import random
-
     SI = random.uniform(10, 30)
     DTC = random.uniform(2, 7)
-
     return round(SI, 2), round(DTC, 2)
 
 def get_volume_label(pct):
@@ -71,6 +70,22 @@ def get_volume_label(pct):
     elif pct >= 2:
         return "ELEVATED"
     return "NORMAL"
+
+# =========================
+# COOLDOWN CONTROL
+# =========================
+def cooldown_passed(symbol):
+    now = time.time()
+
+    if symbol not in LAST_ALERT_TIME:
+        LAST_ALERT_TIME[symbol] = now
+        return True
+
+    if now - LAST_ALERT_TIME[symbol] >= COOLDOWN_SECONDS:
+        LAST_ALERT_TIME[symbol] = now
+        return True
+
+    return False
 
 # =========================
 # CORE ENGINE
@@ -99,7 +114,7 @@ def evaluate_signal(symbol):
     volume = get_volume_label(pct)
 
     # =========================
-    # STATE LOGIC
+    # STATE LOGIC (UNCHANGED CORE)
     # =========================
     if SI >= 20 and DTC >= 5 and pct >= 5:
         state = "LOADED"
@@ -127,13 +142,22 @@ def evaluate_signal(symbol):
         return
 
     if prev_state == state:
-        return  # NO DUPLICATE ALERTS
+        return  # 🔒 NO DUPLICATE ALERTS
+
+    # =========================
+    # COOLDOWN FILTER (NEW)
+    # =========================
+    if not cooldown_passed(symbol):
+        print(f"COOLDOWN: {symbol}")
+        return
 
     STATE_CACHE[symbol] = state
 
     # =========================
     # FORMAT MESSAGE (LOCKED)
     # =========================
+    dtc_clean = int(round(DTC))  # 🔥 FIX: NO PARTIAL DAYS
+
     message = f"""{symbol}
 
 Price: {price:.2f} • {pct:.2f}%
@@ -141,7 +165,7 @@ Price: {price:.2f} • {pct:.2f}%
 {emoji} {signal_name}
 
 Structure:
-SI: {SI}% • DTC: {DTC}
+SI: {SI}% • DTC: {dtc_clean}
 Volume: {volume}
 
 State: {state}
