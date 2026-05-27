@@ -1,200 +1,169 @@
 print("FILE LOADED")
 
-import requests
-import time
 import os
+import time
+import requests
 
-# =========================
-# ENV VARIABLES
-# =========================
 TOKEN = os.getenv("TOKEN")
-CHANNEL_ID = os.getenv("CHAT_ID")
+CHAT_ID = os.getenv("CHAT_ID")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
-BASE_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+TG_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
 WATCHLIST = [
-    "AMC","GME","CVNA","UPST","NVDA","TSLA","AAPL","MSFT","META","AMD",
-    "NFLX","GOOGL","AMZN","COIN","PLTR","AI","RIOT","MARA","SOFI","LCID",
-    "NIO","RIVN","SPY","QQQ","IWM","BA","DIS","PYPL","SHOP","SQ",
-    "UBER","LYFT","SNAP","PINS","ROKU","FUBO","BABA","JD","XPEV","LI",
-    "DKNG","HOOD","AFRM","RUN","ENPH","FSLR","T","VZ","INTC","CSCO"
+    "AMC","GME","CVNA","UPST",
+    "RUN","ENPH","NIO","SOFI",
+    "PLTR","COIN","RIVN","LCID"
 ]
 
-state_memory = {}
-structure_memory = {}
+# =========================
+# MOCK STRUCTURE DATA (REPLACE LATER WITH REAL SI/DTC SOURCE)
+# =========================
+STRUCTURE_DATA = {
+    "RUN": {"si": 22, "dtc": 5.5},
+    "ENPH": {"si": 21, "dtc": 5.2},
+    "NIO": {"si": 24, "dtc": 6.1},
+    "SOFI": {"si": 18, "dtc": 3.5},
+    "PLTR": {"si": 16, "dtc": 3.2},
+    "COIN": {"si": 19, "dtc": 4.0},
+    "RIVN": {"si": 23, "dtc": 5.8},
+    "LCID": {"si": 25, "dtc": 6.5},
+}
 
 # =========================
-# PRICE DATA
+# STATE TRACKING
 # =========================
-def get_price_data(symbol):
+last_state = {}
+
+# =========================
+# HELPERS
+# =========================
+def get_price(symbol):
+    url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
     try:
-        url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
-        r = requests.get(url).json()
-
-        price = r.get("c")
-        pct = r.get("dp")
-
-        if price is None or pct is None:
-            return None, None
-
-        return price, pct
-
+        res = requests.get(url).json()
+        return res.get("c"), res.get("dp")
     except:
         return None, None
 
-# =========================
-# STRUCTURE ENGINE
-# =========================
-def check_structure(symbol, pct):
-    prev = structure_memory.get(symbol, 0)
-
-    if 2 <= pct <= 8:
-        structure_memory[symbol] = prev + 1
-    else:
-        structure_memory[symbol] = 0
-
-    return structure_memory[symbol] >= 2
-
-# =========================
-# STATE ENGINE
-# =========================
-def get_state(symbol, pct_change):
-    prev_state = state_memory.get(symbol, "BASELINE")
-
-    if pct_change >= 5:
-        new_state = "LOADED"
-    elif pct_change >= 2:
-        new_state = "BUILDING"
-    else:
-        new_state = "BASELINE"
-
-    return prev_state, new_state
-
-# =========================
-# STATE RANKING (NEW FIX)
-# =========================
-def state_rank(state):
-    ranks = {
-        "BASELINE": 0,
-        "BUILDING": 1,
-        "LOADED": 2
-    }
-    return ranks.get(state, 0)
-
-# =========================
-# SIGNAL
-# =========================
-def get_signal(state):
-    if state == "BUILDING":
-        return "🔥 Pressure Cooker"
-    elif state == "LOADED":
-        return "💣 Ticking Time Bomb"
-    return None
-
-# =========================
-# VOLUME
-# =========================
-def get_volume_label(pct_change, state):
-    if state == "LOADED":
-        return "EXPANDING"
-    elif state == "BUILDING":
-        return "ELEVATED"
-    return "NORMAL"
-
-# =========================
-# READ
-# =========================
-def get_read(state):
-    if state == "BUILDING":
-        return (
-            "Pressure forming beneath the surface. "
-            "Repeated movement detected — structure building."
-        )
-    elif state == "LOADED":
-        return (
-            "Confirmed pressure expansion. "
-            "Momentum aligned with structure — volatility likely."
-        )
-    return None
-
-# =========================
-# FORMAT
-# =========================
-def format_message(symbol, price, pct, signal, volume, state, read):
-    price_str = f"{price:.2f}".rstrip('0').rstrip('.')
-
-    msg = f"{symbol}\n\n"
-    msg += f"Price: {price_str} • {pct:.2f}%\n\n"
-    msg += f"{signal}\n\n"
-    msg += f"Volume: {volume}\n\n"
-    msg += f"State: {state}\n\n"
-    msg += f"READ:\n{read}"
-
-    return msg
-
-# =========================
-# TELEGRAM
-# =========================
 def send_telegram(message):
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": message
+    }
     try:
-        requests.post(BASE_URL, json={
-            "chat_id": CHANNEL_ID,
-            "text": message
-        })
-    except Exception as e:
-        print("Telegram error:", e)
+        requests.post(TG_URL, data=payload)
+    except:
+        pass
+
+def format_price(price):
+    return f"{price:.2f}"
+
+def format_pct(pct):
+    return f"{pct:.2f}"
+
+# =========================
+# SIGNAL ENGINE
+# =========================
+def evaluate_signal(symbol, price, pct, si, dtc):
+
+    # ===== PRIORITY: TIME BOMB =====
+    if si >= 20 and dtc >= 5:
+
+        if pct >= 10:
+            return {
+                "signal": "💣 Ticking Time Bomb",
+                "state": "EXTENDED",
+                "volume": "EXPANDING",
+                "read": "Pressure conditions are fully developed. Positioning is constrained and unstable. High potential for volatility expansion."
+            }
+
+        elif pct >= 5:
+            return {
+                "signal": "💣 Ticking Time Bomb",
+                "state": "LOADED",
+                "volume": "EXPANDING",
+                "read": "Pressure conditions are fully developed. Positioning is constrained and unstable. High potential for volatility expansion."
+            }
+
+    # ===== PRESSURE COOKER =====
+    if si >= 15 and dtc >= 3 and pct >= 2:
+        return {
+            "signal": "🔥 Pressure Cooker",
+            "state": "BUILDING",
+            "volume": "ELEVATED",
+            "read": "Short pressure is actively building. Liquidity and positioning are tightening. This is where setups begin forming — attention required."
+        }
+
+    return None
+
+# =========================
+# MESSAGE BUILDER (LOCKED FORMAT)
+# =========================
+def build_message(symbol, price, pct, signal_data, si, dtc):
+
+    return f"""{symbol}
+
+Price: {format_price(price)} • {format_pct(pct)}%
+
+{signal_data['signal']}
+
+Structure:
+SI: {si}% • DTC: {dtc}
+Volume: {signal_data['volume']}
+
+State: {signal_data['state']}
+
+READ:
+{signal_data['read']}
+"""
 
 # =========================
 # MAIN LOOP
 # =========================
-def run_bot():
+def run():
     print("BOT STARTED")
 
     while True:
         for symbol in WATCHLIST:
 
-            price, pct = get_price_data(symbol)
-            if price is None:
+            price, pct = get_price(symbol)
+
+            if price is None or pct is None:
+                print(f"SKIP: {symbol} - No price data")
                 continue
 
-            # STRUCTURE FIRST
-            if not check_structure(symbol, pct):
+            structure = STRUCTURE_DATA.get(symbol)
+
+            if not structure:
+                print(f"SKIP: {symbol} - No structure data")
                 continue
 
-            prev_state, state = get_state(symbol, pct)
+            si = structure["si"]
+            dtc = structure["dtc"]
 
-            # 🚨 BLOCK DOWNGRADES (CRITICAL FIX)
-            if state_rank(state) <= state_rank(prev_state):
+            signal = evaluate_signal(symbol, price, pct, si, dtc)
+
+            if not signal:
                 continue
 
-            if state == "BASELINE":
-                continue
+            prev = last_state.get(symbol)
 
-            signal = get_signal(state)
-            if signal is None:
-                continue
+            if prev == signal["state"]:
+                continue  # NO REPEAT ALERTS
 
-            volume = get_volume_label(pct, state)
-            read = get_read(state)
+            last_state[symbol] = signal["state"]
 
-            message = format_message(
-                symbol, price, pct, signal,
-                volume, state, read
-            )
+            message = build_message(symbol, price, pct, signal, si, dtc)
+
+            print(f"ALERT: {symbol} -> {signal['state']}")
 
             send_telegram(message)
 
-            state_memory[symbol] = state
-
-            print(f"ALERT: {symbol} → {state}")
-
-            time.sleep(1)
-
-        time.sleep(30)
+        time.sleep(60)
 
 # =========================
-# RUN
+# START
 # =========================
 if __name__ == "__main__":
-    run_bot()
+    run()
