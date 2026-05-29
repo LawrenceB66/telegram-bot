@@ -16,15 +16,18 @@ WATCHLIST = [
 ]
 
 # =========================
-# STATE TRACKING (CRITICAL)
+# STATE TRACKING
 # =========================
 STATE_CACHE = {}
-LAST_ALERT_TIME = {}
-
-COOLDOWN_SECONDS = 900  # 15 min
 
 # =========================
-# STATIC READ TEXT (LOCKED)
+# 🆕 COOLDOWN TRACKING
+# =========================
+LAST_ALERT_TIME = {}
+COOLDOWN_SECONDS = 900   # 15 minutes per symbol
+
+# =========================
+# STATIC READ TEXT
 # =========================
 READ_PRESSURE_COOKER = "Short pressure is building. Liquidity and positioning are tightening."
 READ_TIME_BOMB = "Pressure is fully developed. Positioning is constrained. Expansion risk elevated."
@@ -56,7 +59,7 @@ def get_price(symbol):
     return price, pct
 
 # =========================
-# ⚠️ PLACEHOLDER STRUCTURE
+# TEMP STRUCTURE (MOCK)
 # =========================
 def get_structure(symbol):
     import random
@@ -72,39 +75,18 @@ def get_volume_label(pct):
     return "NORMAL"
 
 # =========================
-# COOLDOWN CONTROL
-# =========================
-def cooldown_passed(symbol):
-    now = time.time()
-
-    if symbol not in LAST_ALERT_TIME:
-        LAST_ALERT_TIME[symbol] = now
-        return True
-
-    if now - LAST_ALERT_TIME[symbol] >= COOLDOWN_SECONDS:
-        LAST_ALERT_TIME[symbol] = now
-        return True
-
-    return False
-
-# =========================
 # CORE ENGINE
 # =========================
 def evaluate_signal(symbol):
 
     price, pct = get_price(symbol)
     if price is None:
-        print(f"SKIP: {symbol} — No price data")
         return
 
     SI, DTC = get_structure(symbol)
 
-    # =========================
-    # STRUCTURE FILTER (HARD RULE)
-    # =========================
     if SI < 15 or DTC < 3:
         STATE_CACHE[symbol] = "BASELINE"
-        print(f"SKIP: {symbol} — Structure not met")
         return
 
     state = "BASELINE"
@@ -113,9 +95,6 @@ def evaluate_signal(symbol):
     read = ""
     volume = get_volume_label(pct)
 
-    # =========================
-    # STATE LOGIC (UNCHANGED CORE)
-    # =========================
     if SI >= 20 and DTC >= 5 and pct >= 5:
         state = "LOADED"
         signal_name = "Ticking Time Bomb"
@@ -129,12 +108,6 @@ def evaluate_signal(symbol):
         emoji = "🔥"
         read = READ_PRESSURE_COOKER
 
-    else:
-        state = "BASELINE"
-
-    # =========================
-    # STATE CHANGE FILTER
-    # =========================
     prev_state = STATE_CACHE.get(symbol)
 
     if state == "BASELINE":
@@ -142,22 +115,24 @@ def evaluate_signal(symbol):
         return
 
     if prev_state == state:
-        return  # 🔒 NO DUPLICATE ALERTS
+        return
 
     # =========================
-    # COOLDOWN FILTER (NEW)
+    # 🆕 COOLDOWN CHECK
     # =========================
-    if not cooldown_passed(symbol):
+    now = time.time()
+    last_time = LAST_ALERT_TIME.get(symbol, 0)
+
+    if now - last_time < COOLDOWN_SECONDS:
         print(f"COOLDOWN: {symbol}")
         return
 
+    LAST_ALERT_TIME[symbol] = now
     STATE_CACHE[symbol] = state
 
     # =========================
-    # FORMAT MESSAGE (LOCKED)
+    # MESSAGE
     # =========================
-    dtc_clean = int(round(DTC))  # 🔥 FIX: NO PARTIAL DAYS
-
     message = f"""{symbol}
 
 Price: {price:.2f} • {pct:.2f}%
@@ -165,7 +140,7 @@ Price: {price:.2f} • {pct:.2f}%
 {emoji} {signal_name}
 
 Structure:
-SI: {SI}% • DTC: {dtc_clean}
+SI: {SI}% • DTC: {DTC}
 Volume: {volume}
 
 State: {state}
