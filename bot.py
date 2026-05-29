@@ -1,203 +1,115 @@
-print("FILE LOADED")
-
-import os
-import time
+# ===============================
+# 📦 IMPORTS
+# ===============================
 import requests
+import time
+import json
+import os
 
+# ===============================
+# 🔐 ENV VARIABLES
+# ===============================
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
 TG_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
-WATCHLIST = [
-    "AMC","GME","CVNA","UPST","SOFI","LCID","RIVN","SHOP",
-    "PINS","ROKU","FUBO","DKNG","RUN","ENPH","NIO"
-]
+# ===============================
+# 📁 DATA SOURCE
+# ===============================
+DATA_FILE = "ial_data.json"
 
-# =========================
-# STATE TRACKING
-# =========================
-STATE_CACHE = {}
-
-# =========================
-# COOLDOWN
-# =========================
-LAST_ALERT_TIME = {}
+# ===============================
+# 🔒 SIGNAL FILTER ENGINE
+# ===============================
+LAST_ALERT = {}
 COOLDOWN_SECONDS = 1800  # 30 minutes
 
-# =========================
-# SHORT INTEREST CACHE (TEMP)
-# Replace with real data later
-# =========================
-SI_CACHE = {
-    "AMC": 25.0,
-    "GME": 22.0,
-    "CVNA": 18.0,
-    "UPST": 20.0,
-    "SOFI": 12.0,
-    "LCID": 15.0,
-    "RIVN": 10.0,
-    "SHOP": 8.0,
-    "PINS": 9.0,
-    "ROKU": 11.0,
-    "FUBO": 30.0,
-    "DKNG": 14.0,
-    "RUN": 13.0,
-    "ENPH": 7.0,
-    "NIO": 6.0
-}
-
-# =========================
-# STATIC READ TEXT
-# =========================
-READ_PRESSURE_COOKER = "Short pressure is building. Liquidity and positioning are tightening."
-READ_TIME_BOMB = "Pressure is fully developed. Positioning is constrained. Expansion risk elevated."
-
-# =========================
-# HELPERS
-# =========================
-def safe_request(url):
-    try:
-        r = requests.get(url, timeout=10)
-        return r.json()
-    except:
-        return None
-
-def get_price_volume(symbol):
-    url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
-    data = safe_request(url)
-
-    if not data or "c" not in data:
-        return None, None, None
-
-    price = data["c"]
-    prev = data["pc"]
-
-    if not price or not prev:
-        return None, None, None
-
-    pct = ((price - prev) / prev) * 100
-
-    # Volume proxy using % movement
-    if abs(pct) >= 5:
-        volume = 2.0
-    elif abs(pct) >= 3:
-        volume = 1.5
-    else:
-        volume = 1.0
-
-    return round(price, 2), round(pct, 2), volume
-
-# =========================
-# DTC CALCULATION
-# =========================
-def calculate_dtc(si, volume_factor):
-    if volume_factor == 0:
-        return 0
-    return round(si / volume_factor, 2)
-
-# =========================
-# CORE ENGINE
-# =========================
-def evaluate_signal(symbol):
-
-    price, pct, volume_factor = get_price_volume(symbol)
-    if price is None:
-        return
-
-    si = SI_CACHE.get(symbol, 0)
-
-    # Calculate DTC dynamically
-    dtc = calculate_dtc(si, volume_factor)
-
-    # HARD FILTERS
-    if si < 15:
-        return
-
-    if abs(pct) < 3:
-        return
-
-    state = None
-    signal_name = ""
-    emoji = ""
-    read = ""
-
-    # SIGNAL LOGIC
-    if si >= 20 and dtc >= 5 and pct >= 5:
-        state = "LOADED"
-        signal_name = "Ticking Time Bomb"
-        emoji = "💣"
-        read = READ_TIME_BOMB
-
-    elif si >= 15 and dtc >= 3 and pct >= 3:
-        state = "BUILDING"
-        signal_name = "Pressure Cooker"
-        emoji = "🔥"
-        read = READ_PRESSURE_COOKER
-
-    else:
-        return
-
-    prev_state = STATE_CACHE.get(symbol)
-
-    if prev_state == state:
-        return
-
-    # COOLDOWN
+def should_alert(symbol, price, change_pct, volume, avg_volume, state):
     now = time.time()
-    last_time = LAST_ALERT_TIME.get(symbol, 0)
 
+    # 1. COOLDOWN
+    last_time = LAST_ALERT.get(symbol, 0)
     if now - last_time < COOLDOWN_SECONDS:
-        print(f"COOLDOWN: {symbol}")
-        return
+        return False
 
-    LAST_ALERT_TIME[symbol] = now
-    STATE_CACHE[symbol] = state
+    # 2. MIN PRICE FILTER
+    if price < 2:
+        return False
 
-    # MESSAGE
-    message = f"""{symbol}
+    # 3. MOVE FILTER
+    if abs(change_pct) < 3:
+        return False
 
-Price: {price} • {pct}%
+    # 4. VOLUME CONFIRMATION
+    if volume < avg_volume * 1.5:
+        return False
 
-{emoji} {signal_name}
+    # 5. STATE FILTER
+    if state not in ["BUILDING", "LOADED"]:
+        return False
 
-Structure:
-SI: {si}% • DTC: {dtc}
+    # PASS
+    LAST_ALERT[symbol] = now
+    return True
 
-State: {state}
-
-READ:
-{read}
-"""
-
-    send_telegram(message)
-    print(f"ALERT: {symbol} → {state}")
-
-# =========================
-# TELEGRAM
-# =========================
-def send_telegram(msg):
+# ===============================
+# 📤 TELEGRAM SENDER
+# ===============================
+def send_alert(message):
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": message
+    }
     try:
-        requests.post(TG_URL, data={
-            "chat_id": CHAT_ID,
-            "text": msg
-        })
-    except Exception as e:
-        print("Telegram error:", e)
+        requests.post(TG_URL, json=payload, timeout=10)
+    except:
+        print("Telegram send failed")
 
-# =========================
-# LOOP
-# =========================
-def run():
-    print("BOT STARTED")
+# ===============================
+# 🧠 LOAD DATA
+# ===============================
+def load_data():
+    try:
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {}
+
+# ===============================
+# 🚨 MAIN LOOP
+# ===============================
+def run_bot():
+    print("BOT STARTED...")
 
     while True:
-        for symbol in WATCHLIST:
-            evaluate_signal(symbol)
-            time.sleep(1)
+        data = load_data()
 
-        time.sleep(20)
+        for symbol, d in data.items():
+
+            price = d.get("price", 0)
+            change_pct = d.get("change_pct", 0)
+            volume = d.get("volume", 0)
+            avg_volume = d.get("avg_volume", 1)
+            state = d.get("state", "NONE")
+
+            if should_alert(symbol, price, change_pct, volume, avg_volume, state):
+
+                message = (
+                    f"{symbol}\n"
+                    f"Price: {price} • {change_pct}%\n\n"
+                    f"🔥 {state}\n\n"
+                    f"Volume: {volume}"
+                )
+
+                print(f"ALERT: {symbol} → {state}")
+                send_alert(message)
+
+        time.sleep(60)
+
+# ===============================
+# ▶️ START
+# ===============================
 
 if __name__ == "__main__":
     run()
