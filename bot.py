@@ -27,6 +27,28 @@ LAST_ALERT_TIME = {}
 COOLDOWN_SECONDS = 1800  # 30 minutes
 
 # =========================
+# SHORT INTEREST CACHE (TEMP)
+# Replace with real data later
+# =========================
+SI_CACHE = {
+    "AMC": 25.0,
+    "GME": 22.0,
+    "CVNA": 18.0,
+    "UPST": 20.0,
+    "SOFI": 12.0,
+    "LCID": 15.0,
+    "RIVN": 10.0,
+    "SHOP": 8.0,
+    "PINS": 9.0,
+    "ROKU": 11.0,
+    "FUBO": 30.0,
+    "DKNG": 14.0,
+    "RUN": 13.0,
+    "ENPH": 7.0,
+    "NIO": 6.0
+}
+
+# =========================
 # STATIC READ TEXT
 # =========================
 READ_PRESSURE_COOKER = "Short pressure is building. Liquidity and positioning are tightening."
@@ -42,61 +64,73 @@ def safe_request(url):
     except:
         return None
 
-def get_price_data(symbol):
+def get_price_volume(symbol):
     url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
     data = safe_request(url)
 
     if not data or "c" not in data:
-        return None, None
+        return None, None, None
 
     price = data["c"]
     prev = data["pc"]
 
     if not price or not prev:
-        return None, None
+        return None, None, None
 
     pct = ((price - prev) / prev) * 100
-    return round(price, 2), round(pct, 2)
 
-# =========================
-# VOLUME PROXY
-# =========================
-def get_volume_label(pct):
+    # Volume proxy using % movement
     if abs(pct) >= 5:
-        return "EXPANDING"
+        volume = 2.0
     elif abs(pct) >= 3:
-        return "ELEVATED"
-    return "NORMAL"
+        volume = 1.5
+    else:
+        volume = 1.0
+
+    return round(price, 2), round(pct, 2), volume
 
 # =========================
-# CORE ENGINE (NO SI/DTC)
+# DTC CALCULATION
+# =========================
+def calculate_dtc(si, volume_factor):
+    if volume_factor == 0:
+        return 0
+    return round(si / volume_factor, 2)
+
+# =========================
+# CORE ENGINE
 # =========================
 def evaluate_signal(symbol):
 
-    price, pct = get_price_data(symbol)
+    price, pct, volume_factor = get_price_volume(symbol)
     if price is None:
         return
 
-    # 🔥 HARD FILTER 1 — movement
-    if abs(pct) < 3:
+    si = SI_CACHE.get(symbol, 0)
+
+    # Calculate DTC dynamically
+    dtc = calculate_dtc(si, volume_factor)
+
+    # HARD FILTERS
+    if si < 15:
         return
 
-    volume = get_volume_label(pct)
+    if abs(pct) < 3:
+        return
 
     state = None
     signal_name = ""
     emoji = ""
     read = ""
 
-    # 🔥 STRONG SIGNALS ONLY
-    if pct >= 5:
+    # SIGNAL LOGIC
+    if si >= 20 and dtc >= 5 and pct >= 5:
         state = "LOADED"
         signal_name = "Ticking Time Bomb"
         emoji = "💣"
         read = READ_TIME_BOMB
-        volume = "EXPANDING"
 
-    elif pct >= 3:
+    elif si >= 15 and dtc >= 3 and pct >= 3:
         state = "BUILDING"
         signal_name = "Pressure Cooker"
         emoji = "🔥"
@@ -110,9 +144,7 @@ def evaluate_signal(symbol):
     if prev_state == state:
         return
 
-    # =========================
     # COOLDOWN
-    # =========================
     now = time.time()
     last_time = LAST_ALERT_TIME.get(symbol, 0)
 
@@ -123,16 +155,15 @@ def evaluate_signal(symbol):
     LAST_ALERT_TIME[symbol] = now
     STATE_CACHE[symbol] = state
 
-    # =========================
-    # MESSAGE (CLEAN FORMAT)
-    # =========================
+    # MESSAGE
     message = f"""{symbol}
 
 Price: {price} • {pct}%
 
 {emoji} {signal_name}
 
-Volume: {volume}
+Structure:
+SI: {si}% • DTC: {dtc}
 
 State: {state}
 
