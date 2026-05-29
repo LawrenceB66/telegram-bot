@@ -1,99 +1,177 @@
 import requests
 import time
-import json
 import os
+import json
 
-# =========================
-# 🔐 ENV VARIABLES
-# =========================
-TOKEN = os.getenv("TOKEN")
+# ==============================
+# CONFIG
+# ==============================
+
+TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-# =========================
-# ⚙️ SETTINGS
-# =========================
-DATA_FILE = "ial_data.json"
-CHECK_INTERVAL = 60  # seconds
+CHECK_INTERVAL = 30
+COOLDOWN_SECONDS = 300
 
-# =========================
-# 📤 SEND ALERT
-# =========================
+# 🔥 150 TICKERS (Stress Test Ready)
+TICKERS = [
+    "AMC","GME","CVNA","UPST","LCID","RIVN","NIO","XPEV","PLTR","AI",
+    "SOFI","HOOD","AFRM","DKNG","OPEN","QS","MARA","RIOT","COIN","SNDL",
+    "TLRY","FUBO","NKLA","FFIE","MULN","SINT","WOK",
+
+    "AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","AMD","INTC","NFLX",
+    "DIS","BABA","UBER","LYFT","SQ","PYPL","SHOP","CRM","ORCL","ADBE",
+
+    "JPM","BAC","WFC","C","GS","MS","BLK","AXP","SCHW","COF",
+
+    "XOM","CVX","OXY","SLB","HAL","COP","BP","TOT","EOG","DVN",
+
+    "BA","GE","CAT","DE","LMT","RTX","NOC","HON","UPS","FDX",
+
+    "KO","PEP","MCD","SBUX","WMT","TGT","COST","HD","LOW","DG",
+
+    "PFE","MRNA","JNJ","UNH","ABBV","LLY","BMY","GILD","CVS","WBA",
+
+    "SPY","QQQ","IWM","DIA","ARKK","XLF","XLE","XLK","XLV","XLY",
+
+    "JD","PDD","BIDU","TME","NTES","LI","Xpeng","BYD","TSM","ASML",
+
+    "SNAP","ROKU","PINS","TTD","ZM","DOCU","OKTA","CRWD","ZS","NET",
+
+    "PANW","DDOG","MDB","SNOW","U","PATH","RBLX","COUP","HUBS","TEAM"
+]
+
+STATE_FILE = "state.json"
+
+# ==============================
+# TELEGRAM
+# ==============================
+
 def send_alert(message):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": message
-    }
     try:
-        requests.post(url, data=payload, timeout=10)
-    except Exception as e:
-        print(f"Telegram error: {e}")
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+        payload = {
+            "chat_id": CHAT_ID,
+            "text": message
+        }
+        requests.post(url, json=payload, timeout=10)
+    except:
+        pass
 
-# =========================
-# 📥 LOAD DATA
-# =========================
-def load_data():
-    if not os.path.exists(DATA_FILE):
-        print("No data file found.")
-        return {}
+# ==============================
+# DATA FETCH (FINNHUB)
+# ==============================
 
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
+
+def get_data(symbol):
     try:
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"Load error: {e}")
+        url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
+        r = requests.get(url, timeout=10)
+        data = r.json()
+
+        price = data.get("c", 0)
+        prev_close = data.get("pc", 0)
+
+        if price == 0 or prev_close == 0:
+            return None
+
+        change_pct = ((price - prev_close) / prev_close) * 100
+
+        return {
+            "price": round(price, 2),
+            "change_pct": round(change_pct, 2)
+        }
+
+    except:
+        return None
+
+# ==============================
+# STATE ENGINE
+# ==============================
+
+def classify(change_pct):
+    if change_pct >= 6:
+        return "🚀 BREAKOUT"
+    elif change_pct >= 3.5:
+        return "🔥 BUILDING"
+    elif change_pct <= -3.5:
+        return "📉 DOWNSIDE"
+    else:
+        return None
+
+# ==============================
+# LOAD / SAVE STATE
+# ==============================
+
+def load_state():
+    if not os.path.exists(STATE_FILE):
         return {}
+    with open(STATE_FILE, "r") as f:
+        return json.load(f)
 
-# =========================
-# 🧠 ALERT LOGIC
-# =========================
-def should_alert(symbol, price, change_pct, volume, avg_volume):
-    if change_pct < 3.5:
-        return False
-    if volume < avg_volume:
-        return False
-    return True
+def save_state(state):
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f)
 
-# =========================
-# 🔁 PROCESS MARKET
-# =========================
-def process_market():
-    data = load_data()
+# ==============================
+# MAIN LOOP
+# ==============================
 
-    if not data:
-        print("No data to process.")
-        return
-
-    for symbol, d in data.items():
-        price = d.get("price", 0)
-        change_pct = d.get("change_pct", 0)
-        volume = d.get("volume", 0)
-        avg_volume = d.get("avg_volume", 1)
-        state = d.get("state", "NONE")
-
-        if should_alert(symbol, price, change_pct, volume, avg_volume):
-            message = (
-                f"#{symbol}\n"
-                f"Price: ${round(price, 2)} • {round(change_pct, 2)}%\n\n"
-                f"🔥 {state}\n\n"
-                f"Volume: {volume}"
-            )
-
-            print(f"ALERT: {symbol} → {state}")
-            send_alert(message)
-
-# =========================
-# 🚀 RUN LOOP
-# =========================
 def run():
     print("BOT STARTED...")
+
+    state = load_state()
+
     while True:
-        process_market()
+        for symbol in TICKERS:
+            data = get_data(symbol)
+
+            if not data:
+                continue
+
+            price = data["price"]
+            change_pct = data["change_pct"]
+            new_state = classify(change_pct)
+
+            if not new_state:
+                continue
+
+            last = state.get(symbol, {})
+            last_state = last.get("state")
+            last_time = last.get("time", 0)
+
+            now = time.time()
+
+            # 🚫 NO DUPLICATES + COOLDOWN
+            if new_state == last_state:
+                continue
+
+            if now - last_time < COOLDOWN_SECONDS:
+                continue
+
+            # ✅ ALERT
+            message = (
+                f"#{symbol}\n"
+                f"Price: ${price} • {change_pct}%\n\n"
+                f"{new_state}"
+            )
+
+            print(f"ALERT: {symbol} → {new_state}")
+            send_alert(message)
+
+            # SAVE STATE
+            state[symbol] = {
+                "state": new_state,
+                "time": now
+            }
+
+        save_state(state)
         time.sleep(CHECK_INTERVAL)
 
-# =========================
-# ▶️ ENTRY POINT
-# =========================
+# ==============================
+# START
+# ==============================
 
 if __name__ == "__main__":
     run()
