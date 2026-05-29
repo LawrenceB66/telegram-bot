@@ -168,5 +168,5 @@ def run():
 
         time.sleep(20)
 
-if name == "__main__":
+if __name__ == "__main__":
     run()
