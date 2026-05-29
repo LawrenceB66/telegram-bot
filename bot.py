@@ -21,10 +21,10 @@ WATCHLIST = [
 STATE_CACHE = {}
 
 # =========================
-# 🆕 COOLDOWN TRACKING
+# COOLDOWN
 # =========================
 LAST_ALERT_TIME = {}
-COOLDOWN_SECONDS = 900   # 15 minutes per symbol
+COOLDOWN_SECONDS = 1800  # 30 minutes
 
 # =========================
 # STATIC READ TEXT
@@ -42,7 +42,7 @@ def safe_request(url):
     except:
         return None
 
-def get_price(symbol):
+def get_price_data(symbol):
     url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
     data = safe_request(url)
 
@@ -56,69 +56,62 @@ def get_price(symbol):
         return None, None
 
     pct = ((price - prev) / prev) * 100
-    return price, pct
+    return round(price, 2), round(pct, 2)
 
 # =========================
-# TEMP STRUCTURE (MOCK)
+# VOLUME PROXY
 # =========================
-def get_structure(symbol):
-    import random
-    SI = random.uniform(10, 30)
-    DTC = random.uniform(2, 7)
-    return round(SI, 2), round(DTC, 2)
-
 def get_volume_label(pct):
-    if pct >= 5:
+    if abs(pct) >= 5:
         return "EXPANDING"
-    elif pct >= 2:
+    elif abs(pct) >= 3:
         return "ELEVATED"
     return "NORMAL"
 
 # =========================
-# CORE ENGINE
+# CORE ENGINE (NO SI/DTC)
 # =========================
 def evaluate_signal(symbol):
 
-    price, pct = get_price(symbol)
+    price, pct = get_price_data(symbol)
     if price is None:
         return
 
-    SI, DTC = get_structure(symbol)
-
-    if SI < 15 or DTC < 3:
-        STATE_CACHE[symbol] = "BASELINE"
+    # 🔥 HARD FILTER 1 — movement
+    if abs(pct) < 3:
         return
 
-    state = "BASELINE"
+    volume = get_volume_label(pct)
+
+    state = None
     signal_name = ""
     emoji = ""
     read = ""
-    volume = get_volume_label(pct)
 
-    if SI >= 20 and DTC >= 5 and pct >= 5:
+    # 🔥 STRONG SIGNALS ONLY
+    if pct >= 5:
         state = "LOADED"
         signal_name = "Ticking Time Bomb"
         emoji = "💣"
         read = READ_TIME_BOMB
         volume = "EXPANDING"
 
-    elif SI >= 15 and DTC >= 3 and pct >= 2:
+    elif pct >= 3:
         state = "BUILDING"
         signal_name = "Pressure Cooker"
         emoji = "🔥"
         read = READ_PRESSURE_COOKER
 
-    prev_state = STATE_CACHE.get(symbol)
-
-    if state == "BASELINE":
-        STATE_CACHE[symbol] = state
+    else:
         return
+
+    prev_state = STATE_CACHE.get(symbol)
 
     if prev_state == state:
         return
 
     # =========================
-    # 🆕 COOLDOWN CHECK
+    # COOLDOWN
     # =========================
     now = time.time()
     last_time = LAST_ALERT_TIME.get(symbol, 0)
@@ -131,16 +124,14 @@ def evaluate_signal(symbol):
     STATE_CACHE[symbol] = state
 
     # =========================
-    # MESSAGE
+    # MESSAGE (CLEAN FORMAT)
     # =========================
     message = f"""{symbol}
 
-Price: {price:.2f} • {pct:.2f}%
+Price: {price} • {pct}%
 
 {emoji} {signal_name}
 
-Structure:
-SI: {SI}% • DTC: {DTC}
 Volume: {volume}
 
 State: {state}
@@ -156,10 +147,13 @@ READ:
 # TELEGRAM
 # =========================
 def send_telegram(msg):
-    requests.post(TG_URL, data={
-        "chat_id": CHAT_ID,
-        "text": msg
-    })
+    try:
+        requests.post(TG_URL, data={
+            "chat_id": CHAT_ID,
+            "text": msg
+        })
+    except Exception as e:
+        print("Telegram error:", e)
 
 # =========================
 # LOOP
@@ -172,7 +166,7 @@ def run():
             evaluate_signal(symbol)
             time.sleep(1)
 
-        time.sleep(15)
+        time.sleep(20)
 
-if __name__ == "__main__":
+if name == "__main__":
     run()
