@@ -1,92 +1,99 @@
 import requests
-import json
 import time
+import json
 import os
 
+# =========================
+# 🔐 ENV VARIABLES
+# =========================
 TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-TG_URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-
+# =========================
+# ⚙️ SETTINGS
+# =========================
 DATA_FILE = "ial_data.json"
+CHECK_INTERVAL = 60  # seconds
 
-LAST_ALERT = {}
-COOLDOWN_SECONDS = 1800
-
-# ===============================
-# FILTER ENGINE
-# ===============================
-def should_alert(symbol, d):
-    now = time.time()
-
-    price = d["price"]
-    change_pct = d["change_pct"]
-    volume = d["volume"]
-    avg_volume = d["avg_volume"]
-
-    # COOLDOWN
-    if now - LAST_ALERT.get(symbol, 0) < COOLDOWN_SECONDS:
-        return False
-
-    # HARD FILTERS
-    if price < 5:
-        return False
-
-    if abs(change_pct) < 3:
-        return False
-
-    if volume < avg_volume * 1.5:
-        return False
-
-    LAST_ALERT[symbol] = now
-    return True
-
-# ===============================
-# TELEGRAM
-# ===============================
-def send(msg):
+# =========================
+# 📤 SEND ALERT
+# =========================
+def send_alert(message):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": message
+    }
     try:
-        requests.post(TG_URL, json={
-            "chat_id": CHAT_ID,
-            "text": msg
-        }, timeout=10)
-    except:
-        print("SEND FAIL")
+        requests.post(url, data=payload, timeout=10)
+    except Exception as e:
+        print(f"Telegram error: {e}")
 
-# ===============================
-# LOAD DATA
-# ===============================
-def load():
+# =========================
+# 📥 LOAD DATA
+# =========================
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        print("No data file found.")
+        return {}
+
     try:
         with open(DATA_FILE, "r") as f:
             return json.load(f)
-    except:
+    except Exception as e:
+        print(f"Load error: {e}")
         return {}
 
-# ===============================
-# MAIN LOOP
-# ===============================
-def run_bot():
-    print("BOT STARTED...\n")
+# =========================
+# 🧠 ALERT LOGIC
+# =========================
+def should_alert(symbol, price, change_pct, volume, avg_volume):
+    if change_pct < 3.5:
+        return False
+    if volume < avg_volume:
+        return False
+    return True
 
+# =========================
+# 🔁 PROCESS MARKET
+# =========================
+def process_market():
+    data = load_data()
+
+    if not data:
+        print("No data to process.")
+        return
+
+    for symbol, d in data.items():
+        price = d.get("price", 0)
+        change_pct = d.get("change_pct", 0)
+        volume = d.get("volume", 0)
+        avg_volume = d.get("avg_volume", 1)
+        state = d.get("state", "NONE")
+
+        if should_alert(symbol, price, change_pct, volume, avg_volume):
+            message = (
+                f"#{symbol}\n"
+                f"Price: ${round(price, 2)} • {round(change_pct, 2)}%\n\n"
+                f"🔥 {state}\n\n"
+                f"Volume: {volume}"
+            )
+
+            print(f"ALERT: {symbol} → {state}")
+            send_alert(message)
+
+# =========================
+# 🚀 RUN LOOP
+# =========================
+def run():
+    print("BOT STARTED...")
     while True:
-        data = load()
+        process_market()
+        time.sleep(CHECK_INTERVAL)
 
-        for symbol, d in data.items():
-
-            if should_alert(symbol, d):
-
-                msg = (
-                    f"{symbol}\n"
-                    f"Price: {d['price']} • {d['change_pct']}%\n\n"
-                    f"Volume: {d['volume']}"
-                )
-
-                print(f"ALERT: {symbol}")
-                send(msg)
-
-        time.sleep(60)
-
+# =========================
+# ▶️ ENTRY POINT
+# =========================
 
 if __name__ == "__main__":
     run()
