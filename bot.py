@@ -5,9 +5,9 @@ import json
 
 from send_alert import send_alert
 
-# ============================
+# =========================
 # CONFIG
-# ============================
+# =========================
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -19,12 +19,12 @@ COOLDOWN_SECONDS = 300
 STATE_FILE = "state.json"
 
 TICKERS = [
-    "AMC", "GME", "CVNA", "UPST", "LCID", "RIVN", "NIO", "XPEV",
-    "PLTR", "AI", "SOFI", "HOOD", "AFRM", "DKNG", "OPEN", "QS", 
-    "TLRY", "FUBO", "NKLA", "FFIE", "MULN", "MARA", "RIOT", "COIN",
-    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "DIS", 
-    "BABA", "UBER", "LYFT", "SQ", "PYPL", "JPM", "BAC", "WFC", 
-    "C", "GS", "MS"
+"AMC","GME","CVNA","UPST","LCID","RIVN","NIO","XPEV",
+"PLTR","AI","SOFI","HOOD","AFRM","DKNG","OPEN","QS",
+"TLRY","FUBO","NKLA","FFIE","MULN","MARA","RIOT","COIN",
+"AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","DIS",
+"BABA","UBER","LYFT","SQ","PYPL","JPM","BAC","WFC",
+"C","GS","MS"
 ]
 
 # =========================
@@ -32,174 +32,96 @@ TICKERS = [
 # =========================
 
 def load_state():
-    try:
-        with open(STATE_FILE, "r") as f:
-            return json.load(f)
-    except:
-        return {}
+    try:
+        with open(STATE_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {}
 
 def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f)
 
 # =========================
-# DATA FETCH
+# FETCH DATA
 # =========================
 
-def get_price_data(symbol):
-    try:
-        url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
-        r = requests.get(url, timeout=10)
-        data = r.json()
-
-        price = data.get("c")
-        prev_close = data.get("pc")
-
-        if not price or not prev_close:
-            return None
-
-        change_pct = ((price - prev_close) / prev_close) * 100
-
-        return {
-            "price": round(price, 2),
-            "change_pct": round(change_pct, 2)
-        }
-
-    except:
-        return None
+def get_quote(symbol):
+    url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
+    try:
+        r = requests.get(url, timeout=10)
+        data = r.json()
+        return data
+    except:
+        return None
 
 # =========================
-# STRUCTURE FETCH (STRICT)
+# SIGNAL LOGIC (TEMP BASELINE)
 # =========================
 
-def get_structure(symbol):
-    """
-    STRICT MODE:
-    If no real SI/DTC → return None → BLOCK ALERT
-    """
-    return None  # <-- until real data source added
-
-# =========================
-# CLASSIFICATION
-# =========================
-
-def classify(structure, change_pct):
-    si = structure["si"]
-    dtc = structure["dtc"]
-
-    # TIME BOMB EXTENDED
-    if si >= 20 and dtc >= 5 and change_pct >= 10:
-        return "TIME_BOMB_EXTENDED"
-
-    # TIME BOMB LOADED
-    if si >= 20 and dtc >= 5 and change_pct >= 5:
-        return "TIME_BOMB_LOADED"
-
-    # PRESSURE COOKER
-    if si >= 15 and dtc >= 3 and change_pct >= 2:
-        return "PRESSURE_COOKER"
-
-    return None
-
-# =========================
-# MESSAGE BUILDER
-# =========================
-
-def build_message(symbol, price, change_pct, signal, structure):
-
-    if signal == "PRESSURE_COOKER":
-        return (
-            f"#{symbol}\n\n"
-            f"Price: ${price} • {change_pct}%\n\n"
-            f"🔥 Pressure Cooker\n\n"
-            f"Structure:\n"
-            f"SI: {structure['si']}% • DTC: {structure['dtc']}\n"
-            f"Volume: ELEVATED\n\n"
-            f"State: BUILDING\n\n"
-            f"READ:\n"
-            f"Short pressure is actively building. Liquidity and positioning are tightening. This is where setups begin forming — attention required."
-        )
-
-    if signal == "TIME_BOMB_LOADED":
-        return (
-            f"#{symbol}\n\n"
-            f"Price: ${price} • {change_pct}%\n\n"
-            f"💣 Ticking Time Bomb\n\n"
-            f"Structure:\n"
-            f"SI: {structure['si']}% • DTC: {structure['dtc']}\n"
-            f"Volume: EXPANDING\n\n"
-            f"State: LOADED\n\n"
-            f"READ:\n"
-            f"Pressure conditions are fully developed. Positioning is constrained and unstable. High potential for volatility expansion."
-        )
-
-    if signal == "TIME_BOMB_EXTENDED":
-        return (
-            f"#{symbol}\n\n"
-            f"Price: ${price} • {change_pct}%\n\n"
-            f"💣 Ticking Time Bomb\n\n"
-            f"Structure:\n"
-            f"SI: {structure['si']}% • DTC: {structure['dtc']}\n"
-            f"Volume: EXPANDING\n\n"
-            f"State: EXTENDED\n\n"
-            f"READ:\n"
-            f"Pressure conditions are fully developed. Positioning is constrained and unstable. High potential for volatility expansion."
-        )
+def classify_signal(pct_change):
+    if pct_change >= 5:
+        return "🚀 BREAKOUT"
+    elif pct_change >= 3:
+        return "🔥 BUILDING"
+    else:
+        return None
 
 # =========================
 # MAIN LOOP
 # =========================
 
 def run():
-    state = load_state()
+    print("🚀 Scanner running...")
 
-    while True:
-        for symbol in TICKERS:
+    state = load_state()
 
-            price_data = get_price_data(symbol)
-            if not price_data:
-                continue
+    while True:
+        for ticker in TICKERS:
+            data = get_quote(ticker)
 
-            structure = get_structure(symbol)
-            if not structure:
-                continue  # STRICT: block if no SI/DTC
+            if not data:
+                continue
 
-            signal = classify(structure, price_data["change_pct"])
-            if not signal:
-                continue
+            price = data.get("c", 0)
+            prev_close = data.get("pc", 0)
 
-            last = state.get(symbol, {})
-            last_signal = last.get("signal")
-            last_time = last.get("time", 0)
+            if prev_close == 0:
+                continue
 
-            now = time.time()
+            pct_change = ((price - prev_close) / prev_close) * 100
 
-            if signal == last_signal:
-                continue
+            signal = classify_signal(pct_change)
 
-            if now - last_time < COOLDOWN_SECONDS:
-                continue
+            if not signal:
+                continue
 
-            message = build_message(
-                symbol,
-                price_data["price"],
-                price_data["change_pct"],
-                signal,
-                structure
-            )
+            last_sent = state.get(ticker, 0)
+            now = time.time()
 
-            send_alert(CHAT_ID, message)
+            if now - last_sent < COOLDOWN_SECONDS:
+                continue
 
-            state[symbol] = {
-                "signal": signal,
-                "time": now
-            }
+            message = f"""
+#{ticker}
 
-            save_state(state)
+Price: ${price:.2f} • {pct_change:.2f}%
 
-        time.sleep(CHECK_INTERVAL)
+{signal}
+"""
+
+            print(f"ALERT: {ticker} → {signal}")
+            send_alert(message)
+
+            state[ticker] = now
+            save_state(state)
+
+        time.sleep(CHECK_INTERVAL)
 
 # =========================
+# START
+# =========================
+
 
 if __name__ == "__main__":
     run()
