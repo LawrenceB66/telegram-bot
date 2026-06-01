@@ -5,164 +5,197 @@ import json
 
 from send_alert import send_alert
 
-# ==============================
+# =========================
 # CONFIG
-# ==============================
+# =========================
 
-TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
 CHECK_INTERVAL = 30
-COOLDOWN_SECONDS = 900  # 15 minutes
-
-# ==============================
-# TICKERS
-# ==============================
-
-TICKERS = [
-    "AMC","GME","CVNA","UPST","LCID","RIVN","NIO","XPEV","PLTR","AI",
-    "SOFI","HOOD","AFRM","DKNG","OPEN","QS","MARA","RIOT","COIN","SNDL",
-    "TLRY","FUBO","NKLA","FFIE","MULN","SINT","WOK",
-
-    "AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","AMD","INTC","NFLX",
-    "DIS","BABA","UBER","LYFT","SQ","PYPL","SHOP","CRM","ORCL","ADBE",
-
-    "JPM","BAC","WFC","C","GS","MS","BLK","AXP","SCHW","COF",
-
-    "XOM","CVX","OXY","SLB","HAL","COP","BP","TOT","EOG","DVN",
-
-    "BA","GE","CAT","DE","LMT","RTX","NOC","HON","UPS","FDX",
-
-    "KO","PEP","MCD","SBUX","WMT","TGT","COST","HD","LOW","DG",
-
-    "PFE","MRNA","JNJ","UNH","ABBV","LLY","BMY","GILD","CVS","WBA",
-
-    "SPY","QQQ","IWM","DIA","ARKK","XLF","XLE","XLK","XLV","XLY",
-
-    "JD","PDD","BIDU","TME","NTES","LI","XPEV","BYD","TSM","ASML",
-
-    "SNAP","ROKU","PINS","TTD","ZM","DOCU","OKTA","CRWD","ZS","NET",
-
-    "PANW","DDOG","MDB","SNOW","U","PATH","RBLX","COUP","HUBS","TEAM"
-]
+COOLDOWN_SECONDS = 300
 
 STATE_FILE = "state.json"
 
-FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
+TICKERS = [
+    "AMC","GME","CVNA","UPST","LCID","RIVN","NIO","XPEV","PLTR","AI",
+    "SOFI","HOOD","AFRM","DKNG","OPEN","QS","MARA","RIOT","COIN","SNDL",
+    "TLRY","FUBO","NKLA","FFIE","MULN","SINT","WOK"
+]
 
-# ==============================
-# DATA FETCH
-# ==============================
-
-def get_data(symbol):
-    try:
-        url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
-        r = requests.get(url, timeout=10)
-        data = r.json()
-
-        price = data.get("c", 0)
-        prev_close = data.get("pc", 0)
-
-        if price == 0 or prev_close == 0:
-            return None
-
-        change_pct = ((price - prev_close) / prev_close) * 100
-
-        return {
-            "price": round(price, 2),
-            "change_pct": round(change_pct, 2)
-        }
-
-    except:
-        return None
-
-# ==============================
-# STATE CLASSIFIER (TIGHTENED)
-# ==============================
-
-def classify(change_pct):
-    if change_pct >= 8:
-        return "🚀 BREAKOUT"
-    elif change_pct >= 5:
-        return "🔥 BUILDING"
-    elif change_pct <= -5:
-        return "📉 DOWNSIDE"
-    else:
-        return None
-
-# ==============================
-# STATE STORAGE
-# ==============================
+# =========================
+# LOAD / SAVE STATE
+# =========================
 
 def load_state():
-    if not os.path.exists(STATE_FILE):
-        return {}
-    with open(STATE_FILE, "r") as f:
-        return json.load(f)
+    try:
+        with open(STATE_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {}
 
 def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f)
 
-# ==============================
+# =========================
+# DATA FETCH
+# =========================
+
+def get_price_data(symbol):
+    try:
+        url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
+        r = requests.get(url, timeout=10)
+        data = r.json()
+
+        price = data.get("c")
+        prev_close = data.get("pc")
+
+        if not price or not prev_close:
+            return None
+
+        change_pct = ((price - prev_close) / prev_close) * 100
+
+        return {
+            "price": round(price, 2),
+            "change_pct": round(change_pct, 2)
+        }
+
+    except:
+        return None
+
+# =========================
+# STRUCTURE FETCH (STRICT)
+# =========================
+
+def get_structure(symbol):
+    """
+    STRICT MODE:
+    If no real SI/DTC → return None → BLOCK ALERT
+    """
+    return None  # <-- until real data source added
+
+# =========================
+# CLASSIFICATION
+# =========================
+
+def classify(structure, change_pct):
+    si = structure["si"]
+    dtc = structure["dtc"]
+
+    # TIME BOMB EXTENDED
+    if si >= 20 and dtc >= 5 and change_pct >= 10:
+        return "TIME_BOMB_EXTENDED"
+
+    # TIME BOMB LOADED
+    if si >= 20 and dtc >= 5 and change_pct >= 5:
+        return "TIME_BOMB_LOADED"
+
+    # PRESSURE COOKER
+    if si >= 15 and dtc >= 3 and change_pct >= 2:
+        return "PRESSURE_COOKER"
+
+    return None
+
+# =========================
+# MESSAGE BUILDER
+# =========================
+
+def build_message(symbol, price, change_pct, signal, structure):
+
+    if signal == "PRESSURE_COOKER":
+        return (
+            f"#{symbol}\n\n"
+            f"Price: ${price} • {change_pct}%\n\n"
+            f"🔥 Pressure Cooker\n\n"
+            f"Structure:\n"
+            f"SI: {structure['si']}% • DTC: {structure['dtc']}\n"
+            f"Volume: ELEVATED\n\n"
+            f"State: BUILDING\n\n"
+            f"READ:\n"
+            f"Short pressure is actively building. Liquidity and positioning are tightening. This is where setups begin forming — attention required."
+        )
+
+    if signal == "TIME_BOMB_LOADED":
+        return (
+            f"#{symbol}\n\n"
+            f"Price: ${price} • {change_pct}%\n\n"
+            f"💣 Ticking Time Bomb\n\n"
+            f"Structure:\n"
+            f"SI: {structure['si']}% • DTC: {structure['dtc']}\n"
+            f"Volume: EXPANDING\n\n"
+            f"State: LOADED\n\n"
+            f"READ:\n"
+            f"Pressure conditions are fully developed. Positioning is constrained and unstable. High potential for volatility expansion."
+        )
+
+    if signal == "TIME_BOMB_EXTENDED":
+        return (
+            f"#{symbol}\n\n"
+            f"Price: ${price} • {change_pct}%\n\n"
+            f"💣 Ticking Time Bomb\n\n"
+            f"Structure:\n"
+            f"SI: {structure['si']}% • DTC: {structure['dtc']}\n"
+            f"Volume: EXPANDING\n\n"
+            f"State: EXTENDED\n\n"
+            f"READ:\n"
+            f"Pressure conditions are fully developed. Positioning is constrained and unstable. High potential for volatility expansion."
+        )
+
+# =========================
 # MAIN LOOP
-# ==============================
+# =========================
 
 def run():
-    print("BOT STARTED...")
+    state = load_state()
 
-    state = load_state()
+    while True:
+        for symbol in TICKERS:
 
-    while True:
-        for symbol in TICKERS:
-            data = get_data(symbol)
+            price_data = get_price_data(symbol)
+            if not price_data:
+                continue
 
-            if not data:
-                continue
+            structure = get_structure(symbol)
+            if not structure:
+                continue  # STRICT: block if no SI/DTC
 
-            price = data["price"]
-            change_pct = data["change_pct"]
-            new_state = classify(change_pct)
+            signal = classify(structure, price_data["change_pct"])
+            if not signal:
+                continue
 
-            if not new_state:
-                continue
+            last = state.get(symbol, {})
+            last_signal = last.get("signal")
+            last_time = last.get("time", 0)
 
-            last = state.get(symbol, {})
-            last_state = last.get("state")
-            last_time = last.get("time", 0)
+            now = time.time()
 
-            now = time.time()
+            if signal == last_signal:
+                continue
 
-            # 🚫 ONLY FIRE ON STATE CHANGE
-            if new_state == last_state:
-                continue
+            if now - last_time < COOLDOWN_SECONDS:
+                continue
 
-            # ⏱️ COOLDOWN
-            if now - last_time < COOLDOWN_SECONDS:
-                continue
+            message = build_message(
+                symbol,
+                price_data["price"],
+                price_data["change_pct"],
+                signal,
+                structure
+            )
 
-            # ✅ ALERT MESSAGE
-            message = (
-                f"#{symbol}\n"
-                f"Price: ${price} • {change_pct}%\n\n"
-                f"{new_state}"
-            )
+            send_alert(CHAT_ID, message)
 
-            print(f"ALERT: {symbol} → {new_state}")
-            send_alert(message)
+            state[symbol] = {
+                "signal": signal,
+                "time": now
+            }
 
-            # ✅ SAVE STATE (ONLY WHEN VALID SIGNAL)
-            state[symbol] = {
-                "state": new_state,
-                "time": now
-            }
+            save_state(state)
 
-        save_state(state)
-        time.sleep(CHECK_INTERVAL)
+        time.sleep(CHECK_INTERVAL)
 
-# ==============================
-# START
-# ==============================
+# =========================
 
 if __name__ == "__main__":
-    run()
+    run()
