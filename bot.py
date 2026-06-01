@@ -5,10 +5,11 @@ import json
 
 from send_alert import send_alert
 
-# =========================
+# ============================
 # CONFIG
-# =========================
+# ============================
 
+TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
@@ -18,9 +19,12 @@ COOLDOWN_SECONDS = 300
 STATE_FILE = "state.json"
 
 TICKERS = [
-    "AMC","GME","CVNA","UPST","LCID","RIVN","NIO","XPEV","PLTR","AI",
-    "SOFI","HOOD","AFRM","DKNG","OPEN","QS","MARA","RIOT","COIN","SNDL",
-    "TLRY","FUBO","NKLA","FFIE","MULN","SINT","WOK"
+    "AMC", "GME", "CVNA", "UPST", "LCID", "RIVN", "NIO", "XPEV",
+    "PLTR", "AI", "SOFI", "HOOD", "AFRM", "DKNG", "OPEN", "QS", 
+    "TLRY", "FUBO", "NKLA", "FFIE", "MULN", "MARA", "RIOT", "COIN",
+    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "DIS", 
+    "BABA", "UBER", "LYFT", "SQ", "PYPL", "JPM", "BAC", "WFC", 
+    "C", "GS", "MS"
 ]
 
 # =========================
