@@ -3,7 +3,7 @@ import time
 import os
 import json
 
-from send_alert import send_alert  # ✅ USE EXTERNAL ALERT MODULE
+from send_alert import send_alert
 
 # ==============================
 # CONFIG
