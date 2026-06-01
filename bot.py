@@ -5,49 +5,30 @@ import json
 
 from send_alert import send_alert
 
-# ==============================
-# CONFIG
-# ==============================
-
-TOKEN = os.getenv("TELEGRAM_TOKEN")  # unified naming
+TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 CHECK_INTERVAL = 30
 COOLDOWN_SECONDS = 300
 
-# 🔥 150 TICKERS (Stress Test Ready)
 TICKERS = [
     "AMC","GME","CVNA","UPST","LCID","RIVN","NIO","XPEV","PLTR","AI",
     "SOFI","HOOD","AFRM","DKNG","OPEN","QS","MARA","RIOT","COIN","SNDL",
     "TLRY","FUBO","NKLA","FFIE","MULN","SINT","WOK",
-
     "AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","AMD","INTC","NFLX",
     "DIS","BABA","UBER","LYFT","SQ","PYPL","SHOP","CRM","ORCL","ADBE",
-
     "JPM","BAC","WFC","C","GS","MS","BLK","AXP","SCHW","COF",
-
     "XOM","CVX","OXY","SLB","HAL","COP","BP","TOT","EOG","DVN",
-
     "BA","GE","CAT","DE","LMT","RTX","NOC","HON","UPS","FDX",
-
     "KO","PEP","MCD","SBUX","WMT","TGT","COST","HD","LOW","DG",
-
     "PFE","MRNA","JNJ","UNH","ABBV","LLY","BMY","GILD","CVS","WBA",
-
     "SPY","QQQ","IWM","DIA","ARKK","XLF","XLE","XLK","XLV","XLY",
-
     "JD","PDD","BIDU","TME","NTES","LI","XPEV","BYD","TSM","ASML",
-
     "SNAP","ROKU","PINS","TTD","ZM","DOCU","OKTA","CRWD","ZS","NET",
-
     "PANW","DDOG","MDB","SNOW","U","PATH","RBLX","COUP","HUBS","TEAM"
 ]
 
 STATE_FILE = "state.json"
-
-# ==============================
-# DATA FETCH (FINNHUB)
-# ==============================
 
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
@@ -73,23 +54,15 @@ def get_data(symbol):
     except:
         return None
 
-# ==============================
-# STATE ENGINE
-# ==============================
-
 def classify(change_pct):
     if change_pct >= 6:
-        return "🚀 BREAKOUT"
+        return "BREAKOUT"
     elif change_pct >= 3.5:
-        return "🔥 BUILDING"
+        return "BUILDING"
     elif change_pct <= -3.5:
-        return "📉 DOWNSIDE"
+        return "DOWNSIDE"
     else:
         return None
-
-# ==============================
-# LOAD / SAVE STATE
-# ==============================
 
 def load_state():
     if not os.path.exists(STATE_FILE):
@@ -100,10 +73,6 @@ def load_state():
 def save_state(state):
     with open(STATE_FILE, "w") as f:
         json.dump(state, f)
-
-# ==============================
-# MAIN LOOP
-# ==============================
 
 def run():
     print("BOT STARTED...")
@@ -130,24 +99,21 @@ def run():
 
             now = time.time()
 
-            # 🚫 NO DUPLICATES + COOLDOWN
             if new_state == last_state:
                 continue
 
             if now - last_time < COOLDOWN_SECONDS:
                 continue
 
-            # ✅ ALERT
             message = (
                 f"#{symbol}\n"
                 f"Price: ${price} • {change_pct}%\n\n"
                 f"{new_state}"
             )
 
-            print(f"ALERT: {symbol} → {new_state}")
-            send_alert(message)  # ✅ USING EXTERNAL MODULE
+            print(f"ALERT: {symbol} -> {new_state}")
+            send_alert(message)
 
-            # SAVE STATE
             state[symbol] = {
                 "state": new_state,
                 "time": now
@@ -155,10 +121,6 @@ def run():
 
         save_state(state)
         time.sleep(CHECK_INTERVAL)
-
-# ==============================
-# START
-# ==============================
 
 if __name__ == "__main__":
     run()
