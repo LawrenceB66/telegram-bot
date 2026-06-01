@@ -13,7 +13,11 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 CHECK_INTERVAL = 30
-COOLDOWN_SECONDS = 300
+COOLDOWN_SECONDS = 900  # 15 minutes
+
+# ==============================
+# TICKERS
+# ==============================
 
 TICKERS = [
     "AMC","GME","CVNA","UPST","LCID","RIVN","NIO","XPEV","PLTR","AI",
@@ -35,7 +39,7 @@ TICKERS = [
 
     "SPY","QQQ","IWM","DIA","ARKK","XLF","XLE","XLK","XLV","XLY",
 
-    "JD","PDD","BIDU","TME","NTES","LI","XPEV","TSM","ASML",
+    "JD","PDD","BIDU","TME","NTES","LI","XPEV","BYD","TSM","ASML",
 
     "SNAP","ROKU","PINS","TTD","ZM","DOCU","OKTA","CRWD","ZS","NET",
 
@@ -73,21 +77,21 @@ def get_data(symbol):
         return None
 
 # ==============================
-# CLASSIFIER
+# STATE CLASSIFIER (TIGHTENED)
 # ==============================
 
 def classify(change_pct):
-    if change_pct >= 6:
+    if change_pct >= 8:
         return "🚀 BREAKOUT"
-    elif change_pct >= 3.5:
+    elif change_pct >= 5:
         return "🔥 BUILDING"
-    elif change_pct <= -3.5:
+    elif change_pct <= -5:
         return "📉 DOWNSIDE"
     else:
         return None
 
 # ==============================
-# STATE
+# STATE STORAGE
 # ==============================
 
 def load_state():
@@ -129,12 +133,15 @@ def run():
 
             now = time.time()
 
+            # 🚫 ONLY FIRE ON STATE CHANGE
             if new_state == last_state:
                 continue
 
+            # ⏱️ COOLDOWN
             if now - last_time < COOLDOWN_SECONDS:
                 continue
 
+            # ✅ ALERT MESSAGE
             message = (
                 f"#{symbol}\n"
                 f"Price: ${price} • {change_pct}%\n\n"
@@ -144,6 +151,7 @@ def run():
             print(f"ALERT: {symbol} → {new_state}")
             send_alert(message)
 
+            # ✅ SAVE STATE (ONLY WHEN VALID SIGNAL)
             state[symbol] = {
                 "state": new_state,
                 "time": now
