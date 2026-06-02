@@ -18,135 +18,184 @@ COOLDOWN_SECONDS = 300
 
 STATE_FILE = "state.json"
 
+# ============================
+# EXPANDED TICKER LIST
+# ============================
+
 TICKERS = [
-    "AMC","GME","CVNA","UPST","LCID","RIVN","NIO","XPEV",
-    "PLTR","AI","SOFI","HOOD","AFRM","DKNG","OPEN","QS",
-    "TLRY","FUBO","NKLA","FFIE","MULN","MARA","RIOT","COIN",
-    "AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","DIS",
-    "BABA","UBER","LYFT","SQ","PYPL","JPM","BAC","WFC",
-    "C","GS","MS"
+    "AMC","GME","CVNA","UPST","LCID","RIVN","NIO","XPEV",
+    "SOFI","HOOD","AFRM","DKNG","OPEN","QS",
+    "MARA","RIOT","COIN",
+    "NVDA","PLTR","AI","MSFT","GOOGL","AMZN","META","TSLA",
+    "AAPL","SPY","QQQ",
+    "FFIE","MULN","NKLA","SNDL","TLRY","FUBO",
+    "JPM","BAC","WFC","GS","MS","C"
 ]
+
+# ============================
+# STATE RANKING (ANTI-SPAM)
+# ============================
+
+STATE_RANK = {
+    "BASELINE": 0,
+    "BUILDING": 1,
+    "LOADED": 2,
+    "EXTENDED": 3
+}
 
 # ============================
 # STATE HANDLING
 # ============================
 
 def load_state():
-    try:
-        with open(STATE_FILE, "r") as f:
-            return json.load(f)
-    except:
-        return {}
+    try:
+        with open(STATE_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {}
 
 def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f)
 
 # ============================
 # MARKET DATA
 # ============================
 
-def get_price(ticker):
-    try:
-        url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={FINNHUB_API_KEY}"
-        r = requests.get(url, timeout=5)
-        data = r.json()
-        return data.get("c", 0)
-    except:
-        return 0
+def get_price_data(ticker):
+    try:
+        url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={FINNHUB_API_KEY}"
+        r = requests.get(url, timeout=5)
+        data = r.json()
+
+        price = data.get("c", 0)
+        prev_close = data.get("pc", 0)
+
+        if price == 0 or prev_close == 0:
+            return None
+
+        change_pct = ((price - prev_close) / prev_close) * 100
+
+        return price, change_pct
+    except:
+        return None
 
 # ============================
 # STATE CLASSIFICATION
 # ============================
 
-def get_state(price, prev_price):
-    if prev_price == 0:
-        return "BASELINE"
+def get_state(change_pct):
+    abs_change = abs(change_pct)
 
-    change_pct = ((price - prev_price) / prev_price) * 100
-
-    if abs(change_pct) < 1:
-        return "BASELINE"
-    elif abs(change_pct) < 3:
-        return "BUILDING"
-    elif abs(change_pct) < 6:
-        return "LOADED"
-    else:
-        return "EXTENDED"
+    if abs_change < 1:
+        return "BASELINE"
+    elif abs_change < 3:
+        return "BUILDING"
+    elif abs_change < 6:
+        return "LOADED"
+    else:
+        return "EXTENDED"
 
 # ============================
-# SIGNAL FORMATTER
+# SIGNAL BUILDERS
 # ============================
 
-def format_signal(ticker, price, prev_price, state):
-    if prev_price == 0:
-        return None
+def build_breakout(ticker, price, change_pct):
+    return (
+        f"#{ticker}\n"
+        f"Price: ${price:.2f} • {change_pct:.2f}%\n\n"
+        f"🚀 Breakout Alert\n\n"
+        f"Structure:\n"
+        f"SI: N/A • DTC: N/A\n"
+        f"Volume: EXPANDING\n\n"
+        f"State: EXTENDED\n\n"
+        f"READ:\n"
+        f"Expansion is underway. Momentum and participation are accelerating. This is not early-stage pressure — this is active movement."
+    )
 
-    change_pct = ((price - prev_price) / prev_price) * 100
-
-    direction = "UP" if change_pct > 0 else "DOWN"
-
-    return (
-        f"#{ticker}\n"
-        f"Price: ${price:.2f}\n"
-        f"Move: {change_pct:.2f}% ({direction})\n"
-        f"State: {state}"
-    )
+def build_exhaustion(ticker, price, change_pct):
+    return (
+        f"#{ticker}\n"
+        f"Price: ${price:.2f} • {change_pct:.2f}%\n\n"
+        f"🩸 Overbought\n\n"
+        f"Structure:\n"
+        f"SI: N/A • DTC: N/A\n"
+        f"Volume: ELEVATED\n\n"
+        f"State: EXTENDED\n\n"
+        f"READ:\n"
+        f"Momentum is weakening following expansion. Early signs of exhaustion are present. This is where profit-taking and pullbacks begin to emerge."
+    )
 
 # ============================
-# MAIN LOOP
+# MAIN ENGINE
 # ============================
 
 def run():
-    print("🚀 SIGNAL ENGINE V1 ACTIVE")
+    print("🚀 SIGNAL ENGINE ACTIVE")
 
-    state = load_state()
+    state = load_state()
 
-    while True:
-        for ticker in TICKERS:
+    while True:
+        now = time.time()
 
-            price = get_price(ticker)
+        for ticker in TICKERS:
 
-            if ticker not in state:
-                state[ticker] = {
-                    "last_price": price,
-                    "state": "BASELINE",
-                    "last_alert": 0
-                }
-                continue
+            data = get_price_data(ticker)
+            if not data:
+                continue
 
-            prev_price = state[ticker]["last_price"]
-            prev_state = state[ticker]["state"]
-            last_alert = state[ticker]["last_alert"]
+            price, change_pct = data
 
-            current_state = get_state(price, prev_price)
+            if ticker not in state:
+                state[ticker] = {
+                    "state": "BASELINE",
+                    "last_alert": 0
+                }
+                continue
 
-            if current_state != prev_state:
+            prev_state = state[ticker]["state"]
+            last_alert = state[ticker]["last_alert"]
 
-                now = time.time()
+            current_state = get_state(change_pct)
 
-                if now - last_alert > COOLDOWN_SECONDS:
+            # ============================
+            # SIGNAL LOGIC
+            # ============================
 
-                    message = format_signal(ticker, price, prev_price, current_state)
+            signal = None
 
-                    if message:
-                        send_alert(message)
+            # 🚀 BREAKOUT (override)
+            if current_state == "EXTENDED" and change_pct >= 10:
+                signal = build_breakout(ticker, price, change_pct)
 
-                        state[ticker]["last_alert"] = now
+            # 🩸 EXHAUSTION
+            elif prev_state == "EXTENDED" and change_pct <= -3:
+                signal = build_exhaustion(ticker, price, change_pct)
 
-                        print(f"✅ {ticker}: {prev_state} → {current_state}")
+            # ============================
+            # ALERT CONTROL
+            # ============================
 
-            state[ticker]["last_price"] = price
-            state[ticker]["state"] = current_state
+            if signal:
+                if now - last_alert > COOLDOWN_SECONDS:
+                    send_alert(signal)
+                    state[ticker]["last_alert"] = now
+                    print(f"ALERT: {ticker}")
 
-        save_state(state)
+            # ============================
+            # STATE UPDATE
+            # ============================
 
-        print("🧠 Signal cycle complete. Waiting...")
-        time.sleep(CHECK_INTERVAL)
+            state[ticker]["state"] = current_state
+
+        save_state(state)
+
+        print("🧠 Cycle complete. Waiting...")
+        time.sleep(CHECK_INTERVAL)
 
 # ============================
 # START
 # ============================
 
 if __name__ == "__main__":
-    run()
+    run()
