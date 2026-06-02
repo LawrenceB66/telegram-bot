@@ -19,21 +19,46 @@ COOLDOWN_SECONDS = 300
 STATE_FILE = "state.json"
 
 # ============================
-# EXPANDED TICKER LIST
+# 80 TICKER LIST (OPTIMIZED)
 # ============================
 
 TICKERS = [
-    "AMC","GME","CVNA","UPST","LCID","RIVN","NIO","XPEV",
-    "SOFI","HOOD","AFRM","DKNG","OPEN","QS",
-    "MARA","RIOT","COIN",
-    "NVDA","PLTR","AI","MSFT","GOOGL","AMZN","META","TSLA",
-    "AAPL","SPY","QQQ",
-    "FFIE","MULN","NKLA","SNDL","TLRY","FUBO",
-    "JPM","BAC","WFC","GS","MS","C"
+# High Volatility / Squeeze
+"AMC","GME","CVNA","UPST","LCID","RIVN","NIO","XPEV",
+
+# Momentum / Fintech
+"SOFI","HOOD","AFRM","DKNG","OPEN","QS",
+
+# Crypto Exposure
+"MARA","RIOT","COIN",
+
+# AI / Tech Leaders
+"NVDA","PLTR","AI","MSFT","GOOGL","AMZN","META","TSLA",
+
+# Core Market
+"AAPL","SPY","QQQ",
+
+# Speculative / High Beta
+"FFIE","MULN","NKLA","SNDL","TLRY","FUBO",
+
+# Financials
+"JPM","BAC","WFC","GS","MS","C",
+
+# Additional Tech
+"AMD","INTC","CRM","ADBE","ORCL","CSCO","IBM","NOW",
+
+# Growth / SaaS
+"SNOW","DDOG","ZS","NET","CRWD","OKTA","PANW","MDB",
+
+# Consumer / Retail
+"COST","WMT","TGT","HD","LOW","NKE","SBUX","MCD",
+
+# Energy
+"XOM","CVX","OXY","SLB","COP","HAL","EOG","DVN"
 ]
 
 # ============================
-# STATE RANKING (ANTI-SPAM)
+# STATE RANKING
 # ============================
 
 STATE_RANK = {
@@ -131,7 +156,7 @@ def build_exhaustion(ticker, price, change_pct):
 # ============================
 
 def run():
-    print("🚀 SIGNAL ENGINE ACTIVE")
+    print("🚀 SIGNAL ENGINE ACTIVE (80 TICKERS)")
 
     state = load_state()
 
@@ -158,23 +183,15 @@ def run():
 
             current_state = get_state(change_pct)
 
-            # ============================
-            # SIGNAL LOGIC
-            # ============================
-
             signal = None
 
-            # 🚀 BREAKOUT (override)
+            # 🚀 BREAKOUT
             if current_state == "EXTENDED" and change_pct >= 10:
-             signal = build_breakout(ticker, price, change_pct)
+                signal = build_breakout(ticker, price, change_pct)
 
             # 🩸 EXHAUSTION
             elif prev_state == "EXTENDED" and change_pct <= -3:
-             signal = build_exhaustion(ticker, price, change_pct)
-
-            # ============================
-            # ALERT CONTROL
-            # ============================
+                signal = build_exhaustion(ticker, price, change_pct)
 
             if signal:
                 if now - last_alert > COOLDOWN_SECONDS:
@@ -182,11 +199,9 @@ def run():
                     state[ticker]["last_alert"] = now
                     print(f"ALERT: {ticker}")
 
-            # ============================
-            # STATE UPDATE
-            # ============================
-
             state[ticker]["state"] = current_state
+
+            time.sleep(0.5)  # rate control (critical)
 
         save_state(state)
 
