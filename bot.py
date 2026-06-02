@@ -5,9 +5,9 @@ import json
 
 from send_alert import send_alert
 
-# =========================
+# ============================
 # CONFIG
-# =========================
+# ============================
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
@@ -27,9 +27,9 @@ TICKERS = [
     "C","GS","MS"
 ]
 
-# =========================
-# STATE MANAGEMENT
-# =========================
+# ============================
+# STATE HANDLING
+# ============================
 
 def load_state():
     try:
@@ -42,49 +42,95 @@ def save_state(state):
     with open(STATE_FILE, "w") as f:
         json.dump(state, f)
 
-# =========================
-# MAIN ENGINE
-# =========================
+# ============================
+# MARKET DATA
+# ============================
+
+def get_price(ticker):
+    try:
+        url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={FINNHUB_API_KEY}"
+        r = requests.get(url, timeout=5)
+        data = r.json()
+        return data.get("c", 0)
+    except:
+        return 0
+
+# ============================
+# STATE ENGINE LOGIC
+# ============================
+
+def get_state(price, prev_price):
+    if prev_price == 0:
+        return "BASELINE"
+
+    change_pct = ((price - prev_price) / prev_price) * 100
+
+    if abs(change_pct) < 1:
+        return "BASELINE"
+    elif abs(change_pct) < 3:
+        return "BUILDING"
+    elif abs(change_pct) < 6:
+        return "LOADED"
+    else:
+        return "EXTENDED"
+
+# ============================
+# MAIN LOOP
+# ============================
 
 def run():
-    print("RUNNING CONTROLLED ENGINE")
+    print("🚀 STATE ENGINE ACTIVE")
 
     state = load_state()
 
     while True:
-        now = time.time()
-
         for ticker in TICKERS:
 
-            # initialize if missing
+            price = get_price(ticker)
+
             if ticker not in state:
-                state[ticker] = 0
-
-            last_sent = state[ticker]
-
-            # cooldown enforcement
-            if now - last_sent < COOLDOWN_SECONDS:
+                state[ticker] = {
+                    "last_price": price,
+                    "state": "BASELINE",
+                    "last_alert": 0
+                }
                 continue
 
-            # TEST MESSAGE (safe mode)
-            message = f"TEST #{ticker}"
+            prev_price = state[ticker]["last_price"]
+            prev_state = state[ticker]["state"]
+            last_alert = state[ticker]["last_alert"]
 
-            print(f"Sending: {ticker}")
-            send_alert(message)
+            current_state = get_state(price, prev_price)
 
-            # update + persist immediately
-            state[ticker] = now
-            save_state(state)
+            # ONLY act on state change
+            if current_state != prev_state:
 
-            # small delay prevents burst spam
-            time.sleep(1)
+                now = time.time()
 
-        print("Cycle complete. Waiting...")
+                # cooldown protection
+                if now - last_alert > COOLDOWN_SECONDS:
+
+                    message = f"{ticker} → {current_state}"
+
+                    send_alert(message)
+
+                    state[ticker]["last_alert"] = now
+
+                    print(f"✅ {ticker} moved {prev_state} → {current_state}")
+
+            # update tracking
+            state[ticker]["last_price"] = price
+            state[ticker]["state"] = current_state
+
+        save_state(state)
+
+        print("🧠 State cycle complete. Waiting...")
         time.sleep(CHECK_INTERVAL)
 
-# =========================
+
+# ============================
 # START
-# =========================
+# ============================
 
 if __name__ == "__main__":
     run()
