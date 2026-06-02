@@ -19,54 +19,22 @@ COOLDOWN_SECONDS = 300
 STATE_FILE = "state.json"
 
 # ============================
-# 80 TICKER LIST (OPTIMIZED)
+# 80 TICKERS
 # ============================
 
 TICKERS = [
-# High Volatility / Squeeze
 "AMC","GME","CVNA","UPST","LCID","RIVN","NIO","XPEV",
-
-# Momentum / Fintech
 "SOFI","HOOD","AFRM","DKNG","OPEN","QS",
-
-# Crypto Exposure
 "MARA","RIOT","COIN",
-
-# AI / Tech Leaders
 "NVDA","PLTR","AI","MSFT","GOOGL","AMZN","META","TSLA",
-
-# Core Market
 "AAPL","SPY","QQQ",
-
-# Speculative / High Beta
 "FFIE","MULN","NKLA","SNDL","TLRY","FUBO",
-
-# Financials
 "JPM","BAC","WFC","GS","MS","C",
-
-# Additional Tech
 "AMD","INTC","CRM","ADBE","ORCL","CSCO","IBM","NOW",
-
-# Growth / SaaS
 "SNOW","DDOG","ZS","NET","CRWD","OKTA","PANW","MDB",
-
-# Consumer / Retail
 "COST","WMT","TGT","HD","LOW","NKE","SBUX","MCD",
-
-# Energy
 "XOM","CVX","OXY","SLB","COP","HAL","EOG","DVN"
 ]
-
-# ============================
-# STATE RANKING
-# ============================
-
-STATE_RANK = {
-    "BASELINE": 0,
-    "BUILDING": 1,
-    "LOADED": 2,
-    "EXTENDED": 3
-}
 
 # ============================
 # STATE HANDLING
@@ -106,7 +74,7 @@ def get_price_data(ticker):
         return None
 
 # ============================
-# STATE CLASSIFICATION
+# STATE LOGIC
 # ============================
 
 def get_state(change_pct):
@@ -122,33 +90,35 @@ def get_state(change_pct):
         return "EXTENDED"
 
 # ============================
-# SIGNAL BUILDERS
+# MESSAGE BUILDERS
 # ============================
 
-def build_breakout(ticker, price, change_pct):
+def build_breakout(ticker, price, change_pct, since_text):
     return (
-        f"#{ticker}\n"
-        f"Price: ${price:.2f} • {change_pct:.2f}%\n\n"
+        f"#{ticker}\n\n"
+        f"Price: ${price:.2f} • {change_pct:.2f}%\n"
+        f"{since_text}\n\n"
         f"🚀 Breakout Alert\n\n"
         f"Structure:\n"
         f"SI: N/A • DTC: N/A\n"
         f"Volume: EXPANDING\n\n"
         f"State: EXTENDED\n\n"
         f"READ:\n"
-        f"Expansion is underway. Momentum and participation are accelerating. This is not early-stage pressure — this is active movement."
+        f"Expansion is underway."
     )
 
-def build_exhaustion(ticker, price, change_pct):
+def build_exhaustion(ticker, price, change_pct, since_text):
     return (
-        f"#{ticker}\n"
-        f"Price: ${price:.2f} • {change_pct:.2f}%\n\n"
+        f"#{ticker}\n\n"
+        f"Price: ${price:.2f} • {change_pct:.2f}%\n"
+        f"{since_text}\n\n"
         f"🩸 Overbought\n\n"
         f"Structure:\n"
         f"SI: N/A • DTC: N/A\n"
         f"Volume: ELEVATED\n\n"
         f"State: EXTENDED\n\n"
         f"READ:\n"
-        f"Momentum is weakening following expansion. Early signs of exhaustion are present. This is where profit-taking and pullbacks begin to emerge."
+        f"Momentum weakening. Signs of exhaustion are present."
     )
 
 # ============================
@@ -156,7 +126,7 @@ def build_exhaustion(ticker, price, change_pct):
 # ============================
 
 def run():
-    print("🚀 SIGNAL ENGINE ACTIVE (80 TICKERS)")
+    print("🚀 CONTEXT ENGINE ACTIVE")
 
     state = load_state()
 
@@ -174,7 +144,9 @@ def run():
             if ticker not in state:
                 state[ticker] = {
                     "state": "BASELINE",
-                    "last_alert": 0
+                    "last_alert": 0,
+                    "alert_price": 0,
+                    "alert_count": 0
                 }
                 continue
 
@@ -184,24 +156,61 @@ def run():
             current_state = get_state(change_pct)
 
             signal = None
+            since_text = ""
 
-            # 🚀 BREAKOUT
+            # ============================
+            # SIGNAL LOGIC
+            # ============================
+
             if current_state == "EXTENDED" and change_pct >= 10:
-                signal = build_breakout(ticker, price, change_pct)
 
-            # 🩸 EXHAUSTION
+                if now - last_alert > COOLDOWN_SECONDS:
+
+                    # FIRST ALERT
+                    if state[ticker]["alert_count"] == 0:
+                        state[ticker]["alert_price"] = price
+                        state[ticker]["alert_count"] = 1
+                        since_text = ""
+
+                    else:
+                        alert_price = state[ticker]["alert_price"]
+                        pct_since = ((price - alert_price) / alert_price) * 100
+                        state[ticker]["alert_count"] += 1
+
+                        since_text = f"Since Alert: {pct_since:+.2f}% • #{state[ticker]['alert_count']}"
+
+                    signal = build_breakout(ticker, price, change_pct, since_text)
+
             elif prev_state == "EXTENDED" and change_pct <= -3:
-                signal = build_exhaustion(ticker, price, change_pct)
+
+                if now - last_alert > COOLDOWN_SECONDS:
+
+                    if state[ticker]["alert_count"] > 0:
+                        alert_price = state[ticker]["alert_price"]
+                        pct_since = ((price - alert_price) / alert_price) * 100
+                        state[ticker]["alert_count"] += 1
+
+                        since_text = f"Since Alert: {pct_since:+.2f}% • #{state[ticker]['alert_count']}"
+
+                    signal = build_exhaustion(ticker, price, change_pct, since_text)
+
+            # ============================
+            # SEND ALERT
+            # ============================
 
             if signal:
-                if now - last_alert > COOLDOWN_SECONDS:
-                    send_alert(signal)
-                    state[ticker]["last_alert"] = now
-                    print(f"ALERT: {ticker}")
+                send_alert(signal)
+                state[ticker]["last_alert"] = now
+                print(f"ALERT: {ticker}")
+
+            # RESET if back to baseline
+            if current_state == "BASELINE":
+                state[ticker]["alert_count"] = 0
+                state[ticker]["alert_price"] = 0
 
             state[ticker]["state"] = current_state
 
-            time.sleep(0.5)  # rate control (critical)
+            time.sleep(0.5)
 
         save_state(state)
 
