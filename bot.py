@@ -5,153 +5,182 @@ import json
 
 from send_alert import send_alert
 
-TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
+# =========================
+# CONFIG
+# =========================
+
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
 CHECK_INTERVAL = 30
 COOLDOWN_SECONDS = 300
 
 STATE_FILE = "state.json"
+STRUCTURE_FILE = "structure.json"
 
-# 🔥 EXPANDED 80 TICKER LIST
-TICKERS = [
-    "AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","AMD","INTC","NFLX",
-    "PLTR","AI","COIN","MARA","RIOT","HOOD","SOFI","DKNG","AFRM","UPST",
-    "CVNA","OPEN","QS","LCID","RIVN","NIO","XPEV","FUBO","SNDL","TLRY",
-    "AMC","GME","FFIE","MULN","SINT","WOK","NKLA","BB","BYND","ROKU",
-    "SHOP","SQ","PYPL","UBER","LYFT","SNAP","PINS","SPOT","ZM","DOCU",
-    "BABA","JD","TME","DIS","BA","GE","XOM","CVX","ENPH","SEDG",
-    "TSM","ASML","ORCL","CRM","ADBE","PANW","CRWD","ZS","OKTA","NET",
-    "DDOG","SNOW","MDB","TEAM","INTU","WDAY","FSLY","ESTC","PATH","C3AI"
-]
+# =========================
+# LOAD FILES
+# =========================
 
-# ---------------- STATE MANAGEMENT ---------------- #
-
-def load_state():
+def load_json(file):
     try:
-        with open(STATE_FILE, "r") as f:
+        with open(file, "r") as f:
             return json.load(f)
     except:
         return {}
 
-def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
+def save_json(file, data):
+    with open(file, "w") as f:
+        json.dump(data, f)
 
-# ---------------- DATA FETCH ---------------- #
+# =========================
+# DATA FETCH
+# =========================
 
 def get_price(symbol):
-    url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
     try:
+        url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
         r = requests.get(url, timeout=5)
         data = r.json()
-        return data.get("c"), data.get("dp")
+
+        price = data.get("c")
+        prev_close = data.get("pc")
+
+        if price and prev_close:
+            pct = ((price - prev_close) / prev_close) * 100
+            return round(price, 2), round(pct, 2)
     except:
-        return None, None
+        pass
 
-# ---------------- STATE ENGINE ---------------- #
+    return None, None
 
-def determine_state(pct):
-    if pct is None:
-        return "BASELINE"
+# =========================
+# STRUCTURE CHECK
+# =========================
 
-    if pct >= 10:
-        return "EXPANSION"
-    elif pct >= 5:
-        return "LOADED"
-    elif pct >= 2:
-        return "BUILDING"
-    elif pct <= -10:
-        return "OVERSOLD"
-    elif pct <= -5:
-        return "DOWNSIDE"
-    elif pct <= -2:
-        return "OVERBOUGHT"
-    else:
-        return "BASELINE"
+def get_structure(symbol, structure_data):
+    return structure_data.get(symbol)
 
-# ---------------- MESSAGE BUILDER ---------------- #
+# =========================
+# SIGNAL LOGIC (STRICT IAL)
+# =========================
 
-def build_message(symbol, price, pct, state):
-    emoji_map = {
-        "BUILDING": "🔥",
-        "LOADED": "💣",
-        "EXPANSION": "⚡️",
-        "DOWNSIDE": "🩸",
-        "OVERBOUGHT": "🥵",
-        "OVERSOLD": "❄️"
-    }
+def classify_signal(symbol, price, pct, structure):
 
-    label_map = {
-        "BUILDING": "Building",
-        "LOADED": "Loaded",
-        "EXPANSION": "Expansion",
-        "DOWNSIDE": "Downside",
-        "OVERBOUGHT": "Overbought",
-        "OVERSOLD": "Oversold"
-    }
+    si = structure["si"]
+    dtc = structure["dtc"]
 
-    price_str = f"{price:.2f}" if price else "N/A"
-    pct_str = f"{pct:.2f}" if pct else "0.00"
+    # 💣 TIME BOMB EXTENDED
+    if si >= 20 and dtc >= 5 and pct >= 10:
+        return {
+            "emoji": "💣",
+            "name": "Ticking Time Bomb",
+            "state": "EXTENDED",
+            "volume": "EXPANDING",
+            "read": "Pressure conditions are fully developed. Positioning is constrained and unstable. High potential for volatility expansion."
+        }
 
-    # 🔒 BASELINE = ONLY STATE (NO DUPLICATION)
-    if state == "BASELINE":
-        return (
-            f"#{symbol}\n\n"
-            f"Price: ${price_str} • {pct_str}%\n\n"
-            f"State: BASELINE"
-        )
+    # 💣 TIME BOMB LOADED
+    if si >= 20 and dtc >= 5 and pct >= 5:
+        return {
+            "emoji": "💣",
+            "name": "Ticking Time Bomb",
+            "state": "LOADED",
+            "volume": "EXPANDING",
+            "read": "Pressure conditions are fully developed. Positioning is constrained and unstable. High potential for volatility expansion."
+        }
 
-    # 🔥 ALL OTHER STATES = EMOJI + LABEL ONLY
-    emoji = emoji_map.get(state, "")
-    label = label_map.get(state, state)
+    # 🔥 PRESSURE COOKER
+    if si >= 15 and dtc >= 3 and pct >= 2:
+        return {
+            "emoji": "🔥",
+            "name": "Pressure Cooker",
+            "state": "BUILDING",
+            "volume": "ELEVATED",
+            "read": "Short pressure is actively building. Liquidity and positioning are tightening. This is where setups begin forming — attention required."
+        }
+
+    return None
+
+# =========================
+# MESSAGE FORMAT (LOCKED)
+# =========================
+
+def build_message(symbol, price, pct, signal, structure):
 
     return (
         f"#{symbol}\n\n"
-        f"Price: ${price_str} • {pct_str}%\n\n"
-        f"{emoji} {label}"
+        f"Price: ${price:.2f} • {pct:.2f}%\n\n"
+        f"{signal['emoji']} {signal['name']}\n\n"
+        f"Structure:\n"
+        f"SI: {structure['si']}% • DTC: {structure['dtc']}\n"
+        f"Volume: {signal['volume']}\n\n"
+        f"State: {signal['state']}\n\n"
+        f"READ:\n"
+        f"{signal['read']}"
     )
 
-# ---------------- MAIN LOOP ---------------- #
+# =========================
+# MAIN ENGINE
+# =========================
 
 def run():
-    print("STATE ENGINE ACTIVE")
+    print("IAL STRUCTURE ENGINE ACTIVE")
 
-    state_data = load_state()
+    state_data = load_json(STATE_FILE)
+    structure_data = load_json(STRUCTURE_FILE)
 
     while True:
-        for symbol in TICKERS:
+        now = time.time()
+
+        for symbol in structure_data.keys():
+
             price, pct = get_price(symbol)
 
             if price is None:
                 continue
 
-            current_state = determine_state(pct)
+            structure = get_structure(symbol, structure_data)
 
-            last_state = state_data.get(symbol, {}).get("state")
+            if not structure:
+                continue  # 🔒 NO STRUCTURE = NO SIGNAL
 
-            # 🔒 ONLY SEND ON STATE CHANGE
-            if current_state != last_state:
-                message = build_message(symbol, price, pct, current_state)
+            signal = classify_signal(symbol, price, pct, structure)
 
-                print(f"ALERT: {symbol} → {current_state}")
-                send_alert(message)
+            if not signal:
+                continue  # 🔒 BELOW THRESHOLD = SILENCE
 
-                state_data[symbol] = {
-                    "state": current_state,
-                    "last_price": price,
-                    "timestamp": time.time()
-                }
+            prev = state_data.get(symbol, {})
+            prev_state = prev.get("state")
+            last_alert = prev.get("last_alert", 0)
 
-                save_state(state_data)
+            # 🔒 STATE CHANGE ONLY
+            if signal["state"] == prev_state:
+                continue
 
-                time.sleep(1)
+            # 🔒 COOLDOWN
+            if now - last_alert < COOLDOWN_SECONDS:
+                continue
+
+            message = build_message(symbol, price, pct, signal, structure)
+
+            send_alert(message)
+            print(f"ALERT: {symbol} → {signal['state']}")
+
+            state_data[symbol] = {
+                "state": signal["state"],
+                "last_alert": now
+            }
+
+            time.sleep(1)
+
+        save_json(STATE_FILE, state_data)
 
         print("Cycle complete. Waiting...")
         time.sleep(CHECK_INTERVAL)
 
-# ---------------- START ---------------- #
+# =========================
+# START
+# =========================
 
 if __name__ == "__main__":
     run()
