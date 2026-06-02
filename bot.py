@@ -16,6 +16,9 @@ FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 CHECK_INTERVAL = 30
 COOLDOWN_SECONDS = 300
 
+# 🔥 CONTEXT EXPIRY (4 HOURS)
+CONTEXT_EXPIRY = 14400
+
 STATE_FILE = "state.json"
 
 # ============================
@@ -50,6 +53,10 @@ def load_state():
 def save_state(state):
     with open(STATE_FILE, "w") as f:
         json.dump(state, f)
+
+def reset_context(state, ticker):
+    state[ticker]["alert_count"] = 0
+    state[ticker]["alert_price"] = 0
 
 # ============================
 # MARKET DATA
@@ -126,7 +133,7 @@ def build_exhaustion(ticker, price, change_pct, since_text):
 # ============================
 
 def run():
-    print("🚀 CONTEXT ENGINE ACTIVE")
+    print("🚀 MOMENTUM PHASE ENGINE ACTIVE")
 
     state = load_state()
 
@@ -141,6 +148,7 @@ def run():
 
             price, change_pct = data
 
+            # INIT
             if ticker not in state:
                 state[ticker] = {
                     "state": "BASELINE",
@@ -159,29 +167,43 @@ def run():
             since_text = ""
 
             # ============================
+            # 🔥 DUAL RESET SYSTEM
+            # ============================
+
+            # TIME RESET
+            if now - last_alert > CONTEXT_EXPIRY:
+                reset_context(state, ticker)
+
+            # UPSIDE STRUCTURE RESET
+            if change_pct < 10:
+                reset_context(state, ticker)
+
+            # DOWNSIDE STRUCTURE RESET
+            if change_pct > -5:
+                reset_context(state, ticker)
+
+            # ============================
             # SIGNAL LOGIC
             # ============================
 
-            if current_state == "EXTENDED" and change_pct >= 10:
+            # 🚀 BREAKOUT
+            if change_pct >= 10:
 
                 if now - last_alert > COOLDOWN_SECONDS:
 
-                    # FIRST ALERT
                     if state[ticker]["alert_count"] == 0:
                         state[ticker]["alert_price"] = price
                         state[ticker]["alert_count"] = 1
-                        since_text = ""
-
                     else:
                         alert_price = state[ticker]["alert_price"]
                         pct_since = ((price - alert_price) / alert_price) * 100
                         state[ticker]["alert_count"] += 1
-
                         since_text = f"Since Alert: {pct_since:+.2f}% • #{state[ticker]['alert_count']}"
 
                     signal = build_breakout(ticker, price, change_pct, since_text)
 
-            elif prev_state == "EXTENDED" and change_pct <= -3:
+            # 🩸 EXHAUSTION
+            elif change_pct <= -5:
 
                 if now - last_alert > COOLDOWN_SECONDS:
 
@@ -189,7 +211,6 @@ def run():
                         alert_price = state[ticker]["alert_price"]
                         pct_since = ((price - alert_price) / alert_price) * 100
                         state[ticker]["alert_count"] += 1
-
                         since_text = f"Since Alert: {pct_since:+.2f}% • #{state[ticker]['alert_count']}"
 
                     signal = build_exhaustion(ticker, price, change_pct, since_text)
@@ -203,14 +224,9 @@ def run():
                 state[ticker]["last_alert"] = now
                 print(f"ALERT: {ticker}")
 
-            # RESET if back to baseline
-            if current_state == "BASELINE":
-                state[ticker]["alert_count"] = 0
-                state[ticker]["alert_price"] = 0
-
             state[ticker]["state"] = current_state
 
-            time.sleep(0.5)
+            time.sleep(0.4)
 
         save_state(state)
 
