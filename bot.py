@@ -56,7 +56,7 @@ def get_price(ticker):
         return 0
 
 # ============================
-# STATE ENGINE LOGIC
+# STATE CLASSIFICATION
 # ============================
 
 def get_state(price, prev_price):
@@ -75,11 +75,30 @@ def get_state(price, prev_price):
         return "EXTENDED"
 
 # ============================
+# SIGNAL FORMATTER
+# ============================
+
+def format_signal(ticker, price, prev_price, state):
+    if prev_price == 0:
+        return None
+
+    change_pct = ((price - prev_price) / prev_price) * 100
+
+    direction = "UP" if change_pct > 0 else "DOWN"
+
+    return (
+        f"#{ticker}\n"
+        f"Price: ${price:.2f}\n"
+        f"Move: {change_pct:.2f}% ({direction})\n"
+        f"State: {state}"
+    )
+
+# ============================
 # MAIN LOOP
 # ============================
 
 def run():
-    print("🚀 STATE ENGINE ACTIVE")
+    print("🚀 SIGNAL ENGINE V1 ACTIVE")
 
     state = load_state()
 
@@ -102,31 +121,28 @@ def run():
 
             current_state = get_state(price, prev_price)
 
-            # ONLY act on state change
             if current_state != prev_state:
 
                 now = time.time()
 
-                # cooldown protection
                 if now - last_alert > COOLDOWN_SECONDS:
 
-                    message = f"{ticker} → {current_state}"
+                    message = format_signal(ticker, price, prev_price, current_state)
 
-                    send_alert(message)
+                    if message:
+                        send_alert(message)
 
-                    state[ticker]["last_alert"] = now
+                        state[ticker]["last_alert"] = now
 
-                    print(f"✅ {ticker} moved {prev_state} → {current_state}")
+                        print(f"✅ {ticker}: {prev_state} → {current_state}")
 
-            # update tracking
             state[ticker]["last_price"] = price
             state[ticker]["state"] = current_state
 
         save_state(state)
 
-        print("🧠 State cycle complete. Waiting...")
+        print("🧠 Signal cycle complete. Waiting...")
         time.sleep(CHECK_INTERVAL)
-
 
 # ============================
 # START
