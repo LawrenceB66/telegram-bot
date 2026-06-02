@@ -1,186 +1,224 @@
 import requests
 import time
-import os
 import json
-
-from send_alert import send_alert
+import os
 
 # =========================
 # CONFIG
 # =========================
 
-FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
+TOKEN = os.getenv("TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
+
+STATE_FILE = "state.json"
 
 CHECK_INTERVAL = 30
 COOLDOWN_SECONDS = 300
 
-STATE_FILE = "state.json"
-STRUCTURE_FILE = "structure.json"
+PHASE_RESET_SECONDS = 1800  # 30 minutes
+RESET_THRESHOLD = 2.0       # % reset threshold
 
 # =========================
-# LOAD FILES
+# TICKER LIST (80)
 # =========================
 
-def load_json(file):
-    try:
-        with open(file, "r") as f:
-            return json.load(f)
-    except:
+TICKERS = [
+    "AMC","GME","CVNA","UPST","SOFI","HOOD","AFRM","DKNG",
+    "MARA","RIOT","COIN","WOK","MULN","SINT","FFIE","NKLA",
+    "SNDL","TLRY","FUBO","OPEN","QS","AI","PLTR",
+    "LCID","RIVN","NIO","XPEV",
+    "AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA",
+    "AMD","INTC","SMCI","ADBE","CRM","NFLX","ORCL",
+    "UBER","LYFT","SHOP","SQ","PYPL","ROKU","SNAP",
+    "BABA","JD","PDD","TME","DIS","PARA","WBD",
+    "BA","GE","CAT","F","GM","T","VZ",
+    "SPY","QQQ","IWM",
+    "XOM","CVX","OXY",
+    "JPM","BAC","GS","MS",
+    "COIN","MSTR","BITO"
+]
+
+# =========================
+# STATE LOAD / SAVE
+# =========================
+
+def load_state():
+    if not os.path.exists(STATE_FILE):
         return {}
+    with open(STATE_FILE, "r") as f:
+        return json.load(f)
 
-def save_json(file, data):
-    with open(file, "w") as f:
-        json.dump(data, f)
+def save_state(state):
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f, indent=2)
 
 # =========================
-# DATA FETCH
+# TELEGRAM
 # =========================
 
-def get_price(symbol):
+def send_telegram(message):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": message
+    }
+    requests.post(url, data=payload)
+
+# =========================
+# PRICE FETCH
+# =========================
+
+def get_price_data(symbol):
     try:
-        url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
-        r = requests.get(url, timeout=5)
-        data = r.json()
+        url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={os.getenv('FINNHUB_API_KEY')}"
+        r = requests.get(url).json()
 
-        price = data.get("c")
-        prev_close = data.get("pc")
+        price = r.get("c")
+        prev = r.get("pc")
 
-        if price and prev_close:
-            pct = ((price - prev_close) / prev_close) * 100
-            return round(price, 2), round(pct, 2)
+        if not price or not prev:
+            return None
+
+        pct = ((price - prev) / prev) * 100
+        return price, round(pct, 2)
+
     except:
-        pass
-
-    return None, None
+        return None
 
 # =========================
-# STRUCTURE CHECK
+# STATE LOGIC
 # =========================
 
-def get_structure(symbol, structure_data):
-    return structure_data.get(symbol)
+def determine_state(change_pct):
+    if abs(change_pct) >= 10:
+        return "EXTENDED"
+    elif abs(change_pct) >= 5:
+        return "LOADED"
+    elif abs(change_pct) >= 2:
+        return "BUILDING"
+    else:
+        return "BASELINE"
 
 # =========================
-# SIGNAL LOGIC (STRICT IAL)
+# MESSAGE FORMAT
 # =========================
 
-def classify_signal(symbol, price, pct, structure):
+def format_message(symbol, price, pct, state, phase_text):
+    return f"""#{symbol}
+Price: ${price:.2f} • {pct:+.2f}%
 
-    si = structure["si"]
-    dtc = structure["dtc"]
+State: {state}
 
-    # 💣 TIME BOMB EXTENDED
-    if si >= 20 and dtc >= 5 and pct >= 10:
-        return {
-            "emoji": "💣",
-            "name": "Ticking Time Bomb",
-            "state": "EXTENDED",
-            "volume": "EXPANDING",
-            "read": "Pressure conditions are fully developed. Positioning is constrained and unstable. High potential for volatility expansion."
-        }
-
-    # 💣 TIME BOMB LOADED
-    if si >= 20 and dtc >= 5 and pct >= 5:
-        return {
-            "emoji": "💣",
-            "name": "Ticking Time Bomb",
-            "state": "LOADED",
-            "volume": "EXPANDING",
-            "read": "Pressure conditions are fully developed. Positioning is constrained and unstable. High potential for volatility expansion."
-        }
-
-    # 🔥 PRESSURE COOKER
-    if si >= 15 and dtc >= 3 and pct >= 2:
-        return {
-            "emoji": "🔥",
-            "name": "Pressure Cooker",
-            "state": "BUILDING",
-            "volume": "ELEVATED",
-            "read": "Short pressure is actively building. Liquidity and positioning are tightening. This is where setups begin forming — attention required."
-        }
-
-    return None
-
-# =========================
-# MESSAGE FORMAT (LOCKED)
-# =========================
-
-def build_message(symbol, price, pct, signal, structure):
-
-    return (
-        f"#{symbol}\n\n"
-        f"Price: ${price:.2f} • {pct:.2f}%\n\n"
-        f"{signal['emoji']} {signal['name']}\n\n"
-        f"Structure:\n"
-        f"SI: {structure['si']}% • DTC: {structure['dtc']}\n"
-        f"Volume: {signal['volume']}\n\n"
-        f"State: {signal['state']}\n\n"
-        f"READ:\n"
-        f"{signal['read']}"
-    )
+{phase_text}
+"""
 
 # =========================
 # MAIN ENGINE
 # =========================
 
 def run():
-    print("IAL STRUCTURE ENGINE ACTIVE")
 
-    state_data = load_json(STATE_FILE)
-    structure_data = load_json(STRUCTURE_FILE)
+    state_data = load_state()
+
+    print("🚀 IAL PHASE ENGINE STARTED")
+    print("Scanner running...")
 
     while True:
-        now = time.time()
 
-        for symbol in structure_data.keys():
+        for symbol in TICKERS:
 
-            price, pct = get_price(symbol)
-
-            if price is None:
+            data = get_price_data(symbol)
+            if not data:
                 continue
 
-            structure = get_structure(symbol, structure_data)
+            price, pct = data
+            current_state = determine_state(pct)
 
-            if not structure:
-                continue  # 🔒 NO STRUCTURE = NO SIGNAL
+            now = time.time()
 
-            signal = classify_signal(symbol, price, pct, structure)
+            t = state_data.get(symbol, {
+                "last_state": None,
+                "last_alert_time": 0,
+                "phase_start_price": None,
+                "phase_count": 0
+            })
 
-            if not signal:
-                continue  # 🔒 BELOW THRESHOLD = SILENCE
+            # =========================
+            # RESET LOGIC
+            # =========================
 
-            prev = state_data.get(symbol, {})
-            prev_state = prev.get("state")
-            last_alert = prev.get("last_alert", 0)
+            reset = False
 
-            # 🔒 STATE CHANGE ONLY
-            if signal["state"] == prev_state:
+            # TIME RESET
+            if now - t["last_alert_time"] > PHASE_RESET_SECONDS:
+                reset = True
+
+            # MOMENTUM RESET
+            if t["phase_start_price"]:
+                move = abs((price - t["phase_start_price"]) / t["phase_start_price"] * 100)
+                if move < RESET_THRESHOLD:
+                    reset = True
+
+            if reset:
+                t["phase_start_price"] = None
+                t["phase_count"] = 0
+
+            # =========================
+            # STATE FILTER (NO SPAM)
+            # =========================
+
+            if current_state == t["last_state"]:
                 continue
 
-            # 🔒 COOLDOWN
-            if now - last_alert < COOLDOWN_SECONDS:
+            if current_state == "BASELINE":
+                t["last_state"] = current_state
+                state_data[symbol] = t
                 continue
 
-            message = build_message(symbol, price, pct, signal, structure)
+            # =========================
+            # PHASE TRACKING
+            # =========================
 
-            send_alert(message)
-            print(f"ALERT: {symbol} → {signal['state']}")
+            if t["phase_start_price"] is None:
+                t["phase_start_price"] = price
+                t["phase_count"] = 1
+                phase_text = ""
+            else:
+                t["phase_count"] += 1
+                change_since = ((price - t["phase_start_price"]) / t["phase_start_price"]) * 100
+                phase_text = f"Since Alert: {change_since:+.2f}% • #{t['phase_count']}"
 
-            state_data[symbol] = {
-                "state": signal["state"],
-                "last_alert": now
-            }
+            # =========================
+            # SEND
+            # =========================
+
+            msg = format_message(symbol, price, pct, current_state, phase_text)
+            send_telegram(msg)
+
+            print(f"ALERT: {symbol} | {current_state}")
+
+            # =========================
+            # SAVE STATE
+            # =========================
+
+            t["last_state"] = current_state
+            t["last_alert_time"] = now
+
+            state_data[symbol] = t
+            save_state(state_data)
 
             time.sleep(1)
-
-        save_json(STATE_FILE, state_data)
 
         print("Cycle complete. Waiting...")
         time.sleep(CHECK_INTERVAL)
 
 # =========================
-# START
+# ENTRY POINT
 # =========================
 
 if __name__ == "__main__":
-    run()
+    try:
+        run()
+    except Exception as e:
+        print(f"❌ FATAL ERROR: {e}")
+        time.sleep(5)
