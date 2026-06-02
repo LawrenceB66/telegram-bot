@@ -5,43 +5,43 @@ import json
 
 from send_alert import send_alert
 
-# ============================
+# =========================
 # CONFIG
-# ============================
+# =========================
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
 CHECK_INTERVAL = 30
-COOLDOWN_SECONDS = 300
-
-# 🔥 CONTEXT EXPIRY (4 HOURS)
-CONTEXT_EXPIRY = 14400
-
 STATE_FILE = "state.json"
 
-# ============================
-# 80 TICKERS
-# ============================
+# =========================
+# TICKERS (~80)
+# =========================
 
 TICKERS = [
-"AMC","GME","CVNA","UPST","LCID","RIVN","NIO","XPEV",
-"SOFI","HOOD","AFRM","DKNG","OPEN","QS",
-"MARA","RIOT","COIN",
-"NVDA","PLTR","AI","MSFT","GOOGL","AMZN","META","TSLA",
-"AAPL","SPY","QQQ",
-"FFIE","MULN","NKLA","SNDL","TLRY","FUBO",
-"JPM","BAC","WFC","GS","MS","C",
-"AMD","INTC","CRM","ADBE","ORCL","CSCO","IBM","NOW",
-"SNOW","DDOG","ZS","NET","CRWD","OKTA","PANW","MDB",
-"COST","WMT","TGT","HD","LOW","NKE","SBUX","MCD",
-"XOM","CVX","OXY","SLB","COP","HAL","EOG","DVN"
+    "AMC","GME","CVNA","UPST","LCID","RIVN","NIO","XPEV",
+    "PLTR","AI","SOFI","HOOD","AFRM","DKNG","OPEN","QS",
+    "TLRY","FUBO","NKLA","FFIE","MULN","SINT",
+    "MARA","RIOT","COIN",
+    "AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA",
+    "DIS","BABA","UBER","LYFT","SQ","PYPL","JPM","BAC","WFC",
+    "C","GS","MS",
+    "SPY","QQQ","IWM",
+    "AMD","INTC","CRM","ORCL","ADBE",
+    "SHOP","SNOW","DDOG","NET",
+    "BA","GE","CAT",
+    "XOM","CVX","OXY",
+    "PFE","MRNA","JNJ",
+    "T","VZ",
+    "KO","PEP",
+    "WMT","COST","HD","LOW"
 ]
 
-# ============================
-# STATE HANDLING
-# ============================
+# =========================
+# STATE LOAD/SAVE
+# =========================
 
 def load_state():
     try:
@@ -54,188 +54,165 @@ def save_state(state):
     with open(STATE_FILE, "w") as f:
         json.dump(state, f)
 
-def reset_context(state, ticker):
-    state[ticker]["alert_count"] = 0
-    state[ticker]["alert_price"] = 0
+# =========================
+# FETCH PRICE
+# =========================
 
-# ============================
-# MARKET DATA
-# ============================
-
-def get_price_data(ticker):
+def get_price(symbol):
     try:
-        url = f"https://finnhub.io/api/v1/quote?symbol={ticker}&token={FINNHUB_API_KEY}"
-        r = requests.get(url, timeout=5)
+        url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
+        r = requests.get(url, timeout=10)
         data = r.json()
 
-        price = data.get("c", 0)
-        prev_close = data.get("pc", 0)
+        price = data.get("c")
+        prev_close = data.get("pc")
 
-        if price == 0 or prev_close == 0:
-            return None
-
-        change_pct = ((price - prev_close) / prev_close) * 100
-
-        return price, change_pct
+        if price and prev_close:
+            pct = ((price - prev_close) / prev_close) * 100
+            return round(price, 2), round(pct, 2)
     except:
+        pass
+
+    return None, None
+
+# =========================
+# STATE LOGIC
+# =========================
+
+def classify_state(pct, prev_pct):
+    if pct is None:
         return None
 
-# ============================
-# STATE LOGIC
-# ============================
+    # EXPANSION (⚡️)
+    if abs(pct) >= 6:
+        return "EXPANSION"
 
-def get_state(change_pct):
-    abs_change = abs(change_pct)
-
-    if abs_change < 1:
-        return "BASELINE"
-    elif abs_change < 3:
+    # BUILDING (🔥)
+    if 2 <= pct < 6:
         return "BUILDING"
-    elif abs_change < 6:
+
+    # LOADED (💣)
+    if pct >= 5:
         return "LOADED"
-    else:
-        return "EXTENDED"
 
-# ============================
-# MESSAGE BUILDERS
-# ============================
+    # DOWNSIDE (🩸)
+    if pct <= -5:
+        return "DOWNSIDE"
 
-def build_breakout(ticker, price, change_pct, since_text):
+    return "BASELINE"
+
+# =========================
+# EXHAUSTION LOGIC
+# =========================
+
+def check_overbought(state, pct, prev_pct):
+    if not prev_pct:
+        return False
+
     return (
-        f"#{ticker}\n\n"
-        f"Price: ${price:.2f} • {change_pct:.2f}%\n"
-        f"{since_text}\n\n"
-        f"🚀 Breakout Alert\n\n"
-        f"Structure:\n"
-        f"SI: N/A • DTC: N/A\n"
-        f"Volume: EXPANDING\n\n"
-        f"State: EXTENDED\n\n"
-        f"READ:\n"
-        f"Expansion is underway."
+        pct >= 8 and
+        prev_pct > pct and
+        state in ["BUILDING", "LOADED", "EXPANSION"]
     )
 
-def build_exhaustion(ticker, price, change_pct, since_text):
+def check_oversold(state, pct, prev_pct):
+    if not prev_pct:
+        return False
+
     return (
-        f"#{ticker}\n\n"
-        f"Price: ${price:.2f} • {change_pct:.2f}%\n"
-        f"{since_text}\n\n"
-        f"🩸 Overbought\n\n"
-        f"Structure:\n"
-        f"SI: N/A • DTC: N/A\n"
-        f"Volume: ELEVATED\n\n"
-        f"State: EXTENDED\n\n"
-        f"READ:\n"
-        f"Momentum weakening. Signs of exhaustion are present."
+        pct <= -8 and
+        prev_pct < pct and
+        state == "DOWNSIDE"
     )
 
-# ============================
-# MAIN ENGINE
-# ============================
+# =========================
+# MESSAGE BUILDER
+# =========================
+
+def build_message(symbol, price, pct, state, last_state):
+    emoji_map = {
+        "BUILDING": "🔥",
+        "LOADED": "💣",
+        "EXPANSION": "⚡️",
+        "DOWNSIDE": "🩸",
+        "OVERBOUGHT": "🥵",
+        "OVERSOLD": "❄️"
+    }
+
+    label_map = {
+        "BUILDING": "Building",
+        "LOADED": "Loaded",
+        "EXPANSION": "Expansion",
+        "DOWNSIDE": "Downside",
+        "OVERBOUGHT": "Overbought",
+        "OVERSOLD": "Oversold"
+    }
+
+    emoji = emoji_map.get(state, "")
+    label = label_map.get(state, state)
+
+    message = (
+        f"#{symbol}\n\n"
+        f"Price: ${price} • {pct}%\n\n"
+        f"{emoji} {label}\n\n"
+        f"State: {state}"
+    )
+
+    return message
+
+# =========================
+# MAIN LOOP
+# =========================
 
 def run():
-    print("🚀 MOMENTUM PHASE ENGINE ACTIVE")
+    print("STATE ENGINE ACTIVE")
 
-    state = load_state()
+    state_data = load_state()
 
     while True:
-        now = time.time()
-
         for ticker in TICKERS:
+            price, pct = get_price(ticker)
 
-            data = get_price_data(ticker)
-            if not data:
+            if pct is None:
                 continue
 
-            price, change_pct = data
+            prev = state_data.get(ticker, {})
+            prev_state = prev.get("state")
+            prev_pct = prev.get("pct")
 
-            # INIT
-            if ticker not in state:
-                state[ticker] = {
-                    "state": "BASELINE",
-                    "last_alert": 0,
-                    "alert_price": 0,
-                    "alert_count": 0
-                }
-                continue
+            base_state = classify_state(pct, prev_pct)
 
-            prev_state = state[ticker]["state"]
-            last_alert = state[ticker]["last_alert"]
+            # CHECK EXHAUSTION
+            if check_overbought(prev_state, pct, prev_pct):
+                current_state = "OVERBOUGHT"
+            elif check_oversold(prev_state, pct, prev_pct):
+                current_state = "OVERSOLD"
+            else:
+                current_state = base_state
 
-            current_state = get_state(change_pct)
+            # ONLY SEND ON STATE CHANGE
+            if current_state != prev_state:
+                msg = build_message(ticker, price, pct, current_state, prev_state)
+                send_alert(msg)
+                print(f"ALERT: {ticker} → {current_state}")
 
-            signal = None
-            since_text = ""
+            # SAVE STATE
+            state_data[ticker] = {
+                "state": current_state,
+                "pct": pct,
+                "price": price,
+                "timestamp": time.time()
+            }
 
-            # ============================
-            # 🔥 DUAL RESET SYSTEM
-            # ============================
+            time.sleep(1)
 
-            # TIME RESET
-            if now - last_alert > CONTEXT_EXPIRY:
-                reset_context(state, ticker)
-
-            # UPSIDE STRUCTURE RESET
-            if change_pct < 10:
-                reset_context(state, ticker)
-
-            # DOWNSIDE STRUCTURE RESET
-            if change_pct > -5:
-                reset_context(state, ticker)
-
-            # ============================
-            # SIGNAL LOGIC
-            # ============================
-
-            # 🚀 BREAKOUT
-            if change_pct >= 10:
-
-                if now - last_alert > COOLDOWN_SECONDS:
-
-                    if state[ticker]["alert_count"] == 0:
-                        state[ticker]["alert_price"] = price
-                        state[ticker]["alert_count"] = 1
-                    else:
-                        alert_price = state[ticker]["alert_price"]
-                        pct_since = ((price - alert_price) / alert_price) * 100
-                        state[ticker]["alert_count"] += 1
-                        since_text = f"Since Alert: {pct_since:+.2f}% • #{state[ticker]['alert_count']}"
-
-                    signal = build_breakout(ticker, price, change_pct, since_text)
-
-            # 🩸 EXHAUSTION
-            elif change_pct <= -5:
-
-                if now - last_alert > COOLDOWN_SECONDS:
-
-                    if state[ticker]["alert_count"] > 0:
-                        alert_price = state[ticker]["alert_price"]
-                        pct_since = ((price - alert_price) / alert_price) * 100
-                        state[ticker]["alert_count"] += 1
-                        since_text = f"Since Alert: {pct_since:+.2f}% • #{state[ticker]['alert_count']}"
-
-                    signal = build_exhaustion(ticker, price, change_pct, since_text)
-
-            # ============================
-            # SEND ALERT
-            # ============================
-
-            if signal:
-                send_alert(signal)
-                state[ticker]["last_alert"] = now
-                print(f"ALERT: {ticker}")
-
-            state[ticker]["state"] = current_state
-
-            time.sleep(0.4)
-
-        save_state(state)
-
-        print("🧠 Cycle complete. Waiting...")
+        save_state(state_data)
+        print("Cycle complete. Waiting...")
         time.sleep(CHECK_INTERVAL)
 
-# ============================
+# =========================
 # START
-# ============================
+# =========================
 
 if __name__ == "__main__":
     run()
