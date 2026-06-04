@@ -9,6 +9,9 @@ CHAT_ID = os.getenv("CHAT_ID")
 
 WATCHLIST = ["AMC", "GME", "CVNA", "UPST"]
 
+# 🔒 STATE TRACKING (NEW — CORE OF CONTROL PHASE)
+last_state = {}
+
 def send_telegram(msg):
     url = "https://api.telegram.org/bot" + TELEGRAM_TOKEN + "/sendMessage"
     requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
@@ -61,6 +64,14 @@ def run():
             signal = classify_signal(symbol, pct, structure)
 
             if signal:
+                current_state = signal["state"]
+                previous_state = last_state.get(symbol)
+
+                # 🔒 CONTROL PHASE LOGIC
+                if previous_state == current_state:
+                    print(f"⏸ Skipping {symbol} — same state ({current_state})")
+                    continue
+
                 message = f"""
 {symbol}
 
@@ -78,6 +89,9 @@ READ:
 {signal['read']}
 """
                 send_telegram(message)
+
+                # 🔒 UPDATE STATE AFTER SEND
+                last_state[symbol] = current_state
 
         time.sleep(60)
 
