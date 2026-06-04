@@ -1,99 +1,138 @@
 import requests
 import time
 import os
+import json
 from signal_logic import classify_signal
+
+# =========================
+# ENV VARIABLES
+# =========================
 
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-WATCHLIST = ["AMC", "GME", "CVNA", "UPST"]
+# =========================
+# CONFIG
+# =========================
 
-# 🔒 STATE TRACKING (NEW — CORE OF CONTROL PHASE)
-last_state = {}
+WATCHLIST = [
+    "AMC", "GME", "CVNA", "UPST"
+]
 
-def send_telegram(msg):
-    url = "https://api.telegram.org/bot" + TELEGRAM_TOKEN + "/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
+CHECK_INTERVAL = 30  # seconds
 
-def get_price(symbol):
-    try:
-        url = "https://finnhub.io/api/v1/quote?symbol=" + symbol + "&token=" + FINNHUB_API_KEY
-        r = requests.get(url).json()
+STATE_FILE = "state.json"
 
-        price = r.get("c")
-        prev = r.get("pc")
+# =========================
+# STATE ENGINE (LOCKED)
+# =========================
 
-        if not price or not prev:
-            return None
+def load_state():
+    if not os.path.exists(STATE_FILE):
+        return {}
+    with open(STATE_FILE, "r") as f:
+        return json.load(f)
 
-        pct = ((price - prev) / prev) * 100
-        return price, round(pct, 2)
+def save_state(state):
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f)
 
-    except:
+def should_alert(symbol, new_state):
+    state = load_state()
+
+    last_state = state.get(symbol)
+
+    # 🚫 Block duplicate state
+    if last_state == new_state:
+        return False
+
+    # ✅ Save new state
+    state[symbol] = new_state
+    save_state(state)
+
+    return True
+
+# =========================
+# TELEGRAM
+# =========================
+
+def send_telegram(message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": message
+    }
+    requests.post(url, data=payload)
+
+# =========================
+# DATA FETCH
+# =========================
+
+def get_quote(symbol):
+    url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
+    r = requests.get(url)
+    data = r.json()
+
+    price = data.get("c", 0)
+    prev_close = data.get("pc", 0)
+
+    if prev_close == 0:
         return None
 
-def build_structure(pct):
-    if pct >= 8:
-        return {"rvol": 3.0, "velocity": "EXTREME"}
-    elif pct >= 5:
-        return {"rvol": 2.2, "velocity": "ACCELERATING"}
-    elif pct >= 6:
-        return {"rvol": 2.5, "velocity": "HIGH"}
-    elif pct >= 3.5:
-        return {"rvol": 1.6, "velocity": "MODERATE"}
-    elif pct < 2:
-        return {"rvol": 1.5, "velocity": "REVERSING"}
-    else:
-        return {"rvol": 1.0, "velocity": "LOW"}
+    pct_change = ((price - prev_close) / prev_close) * 100
+
+    return round(price, 2), round(pct_change, 2)
+
+# =========================
+# MAIN LOOP
+# =========================
 
 def run():
     print("IAL ENGINE LIVE")
 
     while True:
         for symbol in WATCHLIST:
-            print("Checking", symbol)
-
-            data = get_price(symbol)
-            if not data:
-                continue
-
-            price, pct = data
-            structure = build_structure(pct)
-
-            signal = classify_signal(symbol, pct, structure)
-
-            if signal:
-                current_state = signal["state"]
-                previous_state = last_state.get(symbol)
-
-                # 🔒 CONTROL PHASE LOGIC
-                if previous_state == current_state:
-                    print(f"⏸ Skipping {symbol} — same state ({current_state})")
+            try:
+                quote = get_quote(symbol)
+                if not quote:
                     continue
 
-                message = f"""
-{symbol}
+                price, pct = quote
 
-Price: {price} • {pct}%
+                # TEMP STRUCTURE (PLACEHOLDER)
+                structure = {
+                    "rvol": 2.0,
+                    "velocity": "ACCELERATING"
+                }
 
-{signal['emoji']} {signal['name']}
+                signal = classify_signal(symbol, pct, structure)
 
-Structure:
-Volume: {signal['volume']}
-Velocity: {signal['velocity']}
+                if signal:
+                    state_name = signal["state"]
 
-State: {signal['state']}
+                    if should_alert(symbol, state_name):
 
-READ:
-{signal['read']}
-"""
-                send_telegram(message)
+                        message = (
+                            f"{symbol}\n\n"
+                            f"Price: {price} • {pct}%\n\n"
+                            f"{signal['emoji']}\n\n"
+                            f"Structure:\n"
+                            f"Volume: {signal['volume']}\n"
+                            f"Velocity: {signal['velocity']}"
+                        )
 
-                # 🔒 UPDATE STATE AFTER SEND
-                last_state[symbol] = current_state
+                        send_telegram(message)
+                        print(f"ALERT SENT: {symbol} {state_name}")
 
-        time.sleep(60)
+            except Exception as e:
+                print(f"Error with {symbol}: {e}")
+
+        time.sleep(CHECK_INTERVAL)
+
+# =========================
+# START
+# =========================
 
 if __name__ == "__main__":
     run()
