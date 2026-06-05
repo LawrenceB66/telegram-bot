@@ -1,98 +1,110 @@
 # =========================
-# IAL MAIN BOT (FIXED)
+# IAL BOT ENGINE (STABLE + DISCOVERY)
 # =========================
 
 import time
 import requests
-from signal_logic import process_signal
+import os
+
+from signal_logic import classify_signal
+from send_alert import send_alert
 from state_engine import should_alert
+from discovery_engine import build_active_list
 
-FINNHUB_API_KEY = "YOUR_API_KEY"
-TELEGRAM_TOKEN = "YOUR_TOKEN"
-CHAT_ID = "YOUR_CHAT_ID"
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 
-WATCHLIST = ["AMC", "GME", "CVNA", "UPST"]
+# 🔒 BASE WATCHLIST (CORE)
+BASE_WATCHLIST = [
+    "AMC", "GME", "CVNA", "UPST",
+    "SOFI", "HOOD", "AFRM", "DKNG",
+    "MARA", "RIOT", "COIN",
+    "AI", "PLTR",
+    "LCID", "RIVN", "NIO", "XPEV"
+]
 
 CHECK_INTERVAL = 30
 
 
-def get_price_data(symbol):
+def get_quote(symbol):
     url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
-    response = requests.get(url)
-    data = response.json()
+    try:
+        r = requests.get(url, timeout=5)
+        data = r.json()
 
-    price = float(data.get("c", 0))
-    prev_close = float(data.get("pc", 0))
+        price = data.get("c", 0)
+        prev_close = data.get("pc", 0)
 
-    if prev_close == 0:
+        if price and prev_close:
+            change_pct = ((price - prev_close) / prev_close) * 100
+        else:
+            change_pct = 0
+
+        return {
+            "price": float(price),
+            "change_pct": float(change_pct),
+            "volume": 0  # placeholder (RVOL comes later)
+        }
+
+    except Exception as e:
+        print(f"Error fetching {symbol}: {e}")
         return None
 
-    percent_change = ((price - prev_close) / prev_close) * 100
 
-    return price, percent_change
+def build_market_data(symbols):
+    market_data = {}
 
+    for symbol in symbols:
+        data = get_quote(symbol)
+        if data:
+            market_data[symbol] = data
 
-def send_telegram(message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": message
-    }
-    requests.post(url, data=payload)
-
-
-def format_message(symbol, price, percent, emoji, volume, velocity):
-    return f"""{symbol}
-
-Price: {price:.2f} • {percent:.2f}%
-
-{emoji}
-
-Structure:
-Volume: {volume}
-Velocity: {velocity}
-"""
+    return market_data
 
 
 def run():
     print("IAL ENGINE LIVE")
 
     while True:
-        for symbol in WATCHLIST:
-            try:
-                data = get_price_data(symbol)
+        try:
+            # STEP 1 — Build base market snapshot
+            base_market_data = build_market_data(BASE_WATCHLIST)
 
-                if not data:
-                    continue
+            # STEP 2 — Expand with discovery
+            active_list = build_active_list(BASE_WATCHLIST, base_market_data)
 
-                price, percent_change = data
+            # STEP 3 — Pull full data for active list
+            market_data = build_market_data(active_list)
 
-                # 🔥 TEMP PLACEHOLDERS (until velocity engine built)
-                volume = "ELEVATED" if abs(percent_change) >= 3.5 else "NORMAL"
-                velocity = "ACCELERATING" if abs(percent_change) >= 5 else "BUILDING"
+            for symbol, data in market_data.items():
+                try:
+                    price = data["price"]
+                    change_pct = data["change_pct"]
+                    volume = data["volume"]
 
-                signal = process_signal(symbol, percent_change, volume, velocity)
+                    # ✅ FIXED — MATCHES signal_logic.py EXPECTATION
+                    signal = classify_signal(price, change_pct, volume)
 
-                if not signal:
-                    continue
+                    if signal is None:
+                        continue
 
-                if should_alert(symbol, signal["state"]):
-                    message = format_message(
-                        symbol,
-                        price,
-                        percent_change,
-                        signal["emoji"],
-                        signal["volume"],
-                        signal["velocity"]
-                    )
+                    state = signal.get("state")
 
-                    send_telegram(message)
-                    print(f"Sent: {symbol} — {signal['state']}")
+                    # 🚫 Prevent duplicate alerts
+                    if not should_alert(symbol, state):
+                        continue
 
-            except Exception as e:
-                print(f"Error with {symbol}: {e}")
+                    send_alert(symbol, price, change_pct, signal)
 
-        time.sleep(CHECK_INTERVAL)
+                    print(f"Sent: {symbol} — {state}")
+
+                except Exception as e:
+                    print(f"Error with {symbol}: {e}")
+
+            time.sleep(CHECK_INTERVAL)
+
+        except Exception as e:
+            print(f"Loop error: {e}")
+            time.sleep(10)
 
 
 if __name__ == "__main__":
