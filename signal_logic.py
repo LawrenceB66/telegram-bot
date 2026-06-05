@@ -1,10 +1,13 @@
 # =========================
-# SIGNAL CLASSIFICATION
+# SIGNAL CLASSIFICATION ENGINE
 # =========================
 
 def classify_signal(price, change_pct, volume, velocity):
     try:
-        # STATE LOGIC
+        # =========================
+        # STATE CLASSIFICATION
+        # =========================
+
         if change_pct >= 6:
             state = "EXTENDED"
         elif change_pct >= 3.5:
@@ -18,7 +21,10 @@ def classify_signal(price, change_pct, volume, velocity):
         else:
             state = "EXHAUSTION"
 
-        # RETURN AS DICTIONARY (CRITICAL FIX)
+        # =========================
+        # RETURN STRUCTURED OBJECT
+        # =========================
+
         return {
             "state": state,
             "volume": volume,
