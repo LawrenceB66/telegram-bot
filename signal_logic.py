@@ -1,82 +1,80 @@
 # =========================
-# SIGNAL LOGIC (CLEAN BUILD)
+# SIGNAL LOGIC (WITH FILTER)
 # =========================
 
-def classify_signal(price, percent_change, volume, avg_volume, velocity):
+def passes_quality_filter(signal, price_change, volume, velocity):
+    """
+    Selective Intelligence Layer
+    Filters weak / noisy signals BEFORE alerting
+    """
 
-    # -------------------------
-    # FORCE DATA TYPES (CRITICAL FIX)
-    # -------------------------
-    try:
-        price = float(price)
-        percent_change = float(percent_change)
-        volume = float(volume)
-        avg_volume = float(avg_volume)
-    except:
-        return None  # skip bad data safely
+    # 🚫 Ignore weak downside moves
+    if signal == "FAILURE" and abs(price_change) < 5:
+        return False
 
-    # -------------------------
-    # RVOL CALC (TEMP BASE)
-    # -------------------------
-    if avg_volume == 0:
-        rvol = 0
-    else:
-        rvol = volume / avg_volume
+    # 🚫 Ignore low participation
+    if volume == "NORMAL":
+        return False
 
-    # -------------------------
-    # PRIORITY LOGIC (LOCKED)
-    # -------------------------
+    # 🚫 Ignore weak momentum
+    if velocity in ["SLOW", "STALLING"]:
+        return False
 
-    # 💣 EXTENDED
-    if percent_change >= 8 and rvol >= 2.5 and velocity == "EXTREME":
-        return {
-            "emoji": "💣",
-            "state": "EXTENDED",
-            "volume": "EXPANDING",
-            "velocity": "EXTREME"
-        }
+    return True
 
-    # 💣 LOADED
-    if percent_change >= 5 and rvol >= 2.0 and velocity in ["ACCELERATING", "HIGH"]:
-        return {
-            "emoji": "💣",
-            "state": "LOADED",
-            "volume": "EXPANDING",
-            "velocity": "ACCELERATING"
-        }
 
-    # ⚡ EXPANSION
-    if percent_change >= 6 and rvol >= 2.5 and velocity == "HIGH":
-        return {
-            "emoji": "⚡️",
-            "state": "EXPANSION",
-            "volume": "SURGING",
-            "velocity": "HIGH"
-        }
+def classify_signal(price_change, volume, velocity):
+    """
+    Core signal classification (UNCHANGED STRUCTURE)
+    """
 
-    # 🔥 BUILDING
-    if percent_change >= 3.5 and rvol >= 1.5 and velocity == "MODERATE":
-        return {
-            "emoji": "🔥",
-            "state": "BUILDING",
-            "volume": "ELEVATED",
-            "velocity": "BUILDING"
-        }
+    # 💣 TIME BOMB (LOADED)
+    if price_change >= 5 and volume == "EXPANDING" and velocity == "ACCELERATING":
+        return "LOADED", "💣"
 
-    # 🩸 FAILURE
-    if percent_change < 2:
-        return {
-            "emoji": "🩸",
-            "state": "FAILURE",
-            "volume": "ELEVATED",
-            "velocity": "REVERSING"
-        }
+    # 💣 TIME BOMB (EXTENDED)
+    if price_change >= 8 and volume == "EXPANDING" and velocity == "EXTREME":
+        return "EXTENDED", "💣"
+
+    # 🔥 PRESSURE COOKER
+    if price_change >= 3.5 and volume == "ELEVATED" and velocity == "BUILDING":
+        return "BUILDING", "🔥"
+
+    # ⚡ MOVERS
+    if price_change >= 6 and volume == "SURGING" and velocity == "HIGH":
+        return "EXPANSION", "⚡"
+
+    # 🩸 BREAKDOWN
+    if price_change <= -3.5 and volume == "ELEVATED" and velocity == "REVERSING":
+        return "FAILURE", "🩸"
 
     # ⚠️ EXHAUSTION
-    if percent_change >= 10 and rvol >= 3 and velocity == "STALLING":
-        return {
-            "emoji": "⚠️",
-            "state": "EXHAUSTION",
-            "volume": "EXTREME",
-            "velocity": "STALLING"
-        }
+    if price_change >= 10 and volume == "EXTREME" and velocity == "STALLING":
+        return "EXHAUSTION", "⚠️"
+
+    return None, None
+
+
+def process_signal(symbol, price_change, volume, velocity):
+    """
+    FULL PIPELINE:
+    classify → filter → return final signal
+    """
+
+    state, emoji = classify_signal(price_change, volume, velocity)
+
+    if not state:
+        return None
+
+    # 🔒 APPLY FILTER HERE
+    if not passes_quality_filter(state, price_change, volume, velocity):
+        return None
+
+    return {
+        "symbol": symbol,
+        "state": state,
+        "emoji": emoji,
+        "volume": volume,
+        "velocity": velocity,
+        "price_change": price_change
+    }
