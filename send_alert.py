@@ -1,26 +1,12 @@
-import requests
-import os
+def format_message(symbol, price, change, state, volume, velocity):
+    emoji = EMOJI_MAP.get(state, "")
 
-# ✅ MATCH bot.py ENV VARIABLES
-TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
+    return f"""{symbol}
 
-def send_alert(message):
-    try:
-        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+Price: {price:.2f} • {change:.2f}%
 
-        payload = {
-            "chat_id": CHAT_ID,
-            "text": message
-        }
+{emoji}
 
-        print("📡 Sending to Telegram...")
-        print(f"CHAT_ID: {CHAT_ID}")
-
-        r = requests.post(url, json=payload, timeout=10)
-
-        print("📬 Telegram Response:")
-        print(r.text)
-
-    except Exception as e:
-        print(f"❌ TELEGRAM ERROR: {e}")
+Structure:
+Volume: {volume}
+Velocity: {velocity}"""
