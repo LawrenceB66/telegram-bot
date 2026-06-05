@@ -1,138 +1,105 @@
+# =========================
+# IAL BOT (CLEAN ENGINE)
+# =========================
+
 import requests
 import time
 import os
-import json
 from signal_logic import classify_signal
-
-# =========================
-# ENV VARIABLES
-# =========================
+from state_engine import should_alert
 
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-# =========================
-# CONFIG
-# =========================
+WATCHLIST = ["AMC", "GME", "CVNA", "UPST"]
 
-WATCHLIST = [
-    "AMC", "GME", "CVNA", "UPST"
-]
+CHECK_INTERVAL = 30
 
-CHECK_INTERVAL = 30  # seconds
-
-STATE_FILE = "state.json"
-
-# =========================
-# STATE ENGINE (LOCKED)
-# =========================
-
-def load_state():
-    if not os.path.exists(STATE_FILE):
-        return {}
-    with open(STATE_FILE, "r") as f:
-        return json.load(f)
-
-def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
-
-def should_alert(symbol, new_state):
-    state = load_state()
-
-    last_state = state.get(symbol)
-
-    # 🚫 Block duplicate state
-    if last_state == new_state:
-        return False
-
-    # ✅ Save new state
-    state[symbol] = new_state
-    save_state(state)
-
-    return True
-
-# =========================
-# TELEGRAM
-# =========================
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": message
-    }
-    requests.post(url, data=payload)
+    requests.post(url, data={"chat_id": CHAT_ID, "text": message})
 
-# =========================
-# DATA FETCH
-# =========================
 
-def get_quote(symbol):
-    url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
-    r = requests.get(url)
-    data = r.json()
+def get_data(symbol):
+    try:
+        url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
+        r = requests.get(url)
+        data = r.json()
 
-    price = data.get("c", 0)
-    prev_close = data.get("pc", 0)
+        price = float(data.get("c", 0))
+        percent_change = float(data.get("dp", 0))
 
-    if prev_close == 0:
-        return None
+        # TEMP volume placeholders (until real RVOL engine)
+        volume = float(data.get("v", 0))
+        avg_volume = volume if volume > 0 else 1  # prevent divide by zero
 
-    pct_change = ((price - prev_close) / prev_close) * 100
+        return price, percent_change, volume, avg_volume
 
-    return round(price, 2), round(pct_change, 2)
+    except Exception as e:
+        print(f"Error with {symbol}: {e}")
+        return None, None, None, None
 
-# =========================
-# MAIN LOOP
-# =========================
+
+def get_velocity(percent_change):
+    # TEMP velocity logic (placeholder until Phase 2)
+    if percent_change >= 8:
+        return "EXTREME"
+    elif percent_change >= 5:
+        return "ACCELERATING"
+    elif percent_change >= 3.5:
+        return "MODERATE"
+    elif percent_change < 2:
+        return "REVERSING"
+    else:
+        return "NORMAL"
+
 
 def run():
     print("IAL ENGINE LIVE")
 
     while True:
         for symbol in WATCHLIST:
-            try:
-                quote = get_quote(symbol)
-                if not quote:
-                    continue
 
-                price, pct = quote
+            price, percent_change, volume, avg_volume = get_data(symbol)
 
-                # TEMP STRUCTURE (PLACEHOLDER)
-                structure = {
-                    "rvol": 2.0,
-                    "velocity": "ACCELERATING"
-                }
+            if price is None:
+                continue
 
-                signal = classify_signal(symbol, pct, structure)
+            velocity = get_velocity(percent_change)
 
-                if signal:
-                    state_name = signal["state"]
+            signal = classify_signal(
+                price,
+                percent_change,
+                volume,
+                avg_volume,
+                velocity
+            )
 
-                    if should_alert(symbol, state_name):
+            if not signal:
+                continue
 
-                        message = (
-                            f"{symbol}\n\n"
-                            f"Price: {price} • {pct}%\n\n"
-                            f"{signal['emoji']}\n\n"
-                            f"Structure:\n"
-                            f"Volume: {signal['volume']}\n"
-                            f"Velocity: {signal['velocity']}"
-                        )
+            state = signal["state"]
 
-                        send_telegram(message)
-                        print(f"ALERT SENT: {symbol} {state_name}")
+            if not should_alert(symbol, state):
+                continue
 
-            except Exception as e:
-                print(f"Error with {symbol}: {e}")
+            message = (
+                f"{symbol}\n\n"
+                f"Price: {price:.2f} • {percent_change:.2f}%\n\n"
+                f"{signal['emoji']}\n\n"
+                f"Structure:\n"
+                f"Volume: {signal['volume']}\n"
+                f"Velocity: {signal['velocity']}"
+            )
+
+            send_telegram(message)
+
+            print(f"Sent: {symbol} — {state}")
 
         time.sleep(CHECK_INTERVAL)
 
-# =========================
-# START
-# =========================
 
 if __name__ == "__main__":
     run()
