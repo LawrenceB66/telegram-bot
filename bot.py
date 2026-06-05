@@ -1,59 +1,57 @@
 # =========================
-# IAL BOT (CLEAN ENGINE)
+# IAL MAIN BOT (FIXED)
 # =========================
 
-import requests
 import time
-import os
-from signal_logic import classify_signal
+import requests
+from signal_logic import process_signal
 from state_engine import should_alert
 
-FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
+FINNHUB_API_KEY = "YOUR_API_KEY"
+TELEGRAM_TOKEN = "YOUR_TOKEN"
+CHAT_ID = "YOUR_CHAT_ID"
 
 WATCHLIST = ["AMC", "GME", "CVNA", "UPST"]
 
 CHECK_INTERVAL = 30
 
 
+def get_price_data(symbol):
+    url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
+    response = requests.get(url)
+    data = response.json()
+
+    price = float(data.get("c", 0))
+    prev_close = float(data.get("pc", 0))
+
+    if prev_close == 0:
+        return None
+
+    percent_change = ((price - prev_close) / prev_close) * 100
+
+    return price, percent_change
+
+
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": message})
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": message
+    }
+    requests.post(url, data=payload)
 
 
-def get_data(symbol):
-    try:
-        url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
-        r = requests.get(url)
-        data = r.json()
+def format_message(symbol, price, percent, emoji, volume, velocity):
+    return f"""{symbol}
 
-        price = float(data.get("c", 0))
-        percent_change = float(data.get("dp", 0))
+Price: {price:.2f} • {percent:.2f}%
 
-        # TEMP volume placeholders (until real RVOL engine)
-        volume = float(data.get("v", 0))
-        avg_volume = volume if volume > 0 else 1  # prevent divide by zero
+{emoji}
 
-        return price, percent_change, volume, avg_volume
-
-    except Exception as e:
-        print(f"Error with {symbol}: {e}")
-        return None, None, None, None
-
-
-def get_velocity(percent_change):
-    # TEMP velocity logic (placeholder until Phase 2)
-    if percent_change >= 8:
-        return "EXTREME"
-    elif percent_change >= 5:
-        return "ACCELERATING"
-    elif percent_change >= 3.5:
-        return "MODERATE"
-    elif percent_change < 2:
-        return "REVERSING"
-    else:
-        return "NORMAL"
+Structure:
+Volume: {volume}
+Velocity: {velocity}
+"""
 
 
 def run():
@@ -61,42 +59,38 @@ def run():
 
     while True:
         for symbol in WATCHLIST:
+            try:
+                data = get_price_data(symbol)
 
-            price, percent_change, volume, avg_volume = get_data(symbol)
+                if not data:
+                    continue
 
-            if price is None:
-                continue
+                price, percent_change = data
 
-            velocity = get_velocity(percent_change)
+                # 🔥 TEMP PLACEHOLDERS (until velocity engine built)
+                volume = "ELEVATED" if abs(percent_change) >= 3.5 else "NORMAL"
+                velocity = "ACCELERATING" if abs(percent_change) >= 5 else "BUILDING"
 
-            signal = classify_signal(
-                price,
-                percent_change,
-                volume,
-                avg_volume,
-                velocity
-            )
+                signal = process_signal(symbol, percent_change, volume, velocity)
 
-            if not signal:
-                continue
+                if not signal:
+                    continue
 
-            state = signal["state"]
+                if should_alert(symbol, signal["state"]):
+                    message = format_message(
+                        symbol,
+                        price,
+                        percent_change,
+                        signal["emoji"],
+                        signal["volume"],
+                        signal["velocity"]
+                    )
 
-            if not should_alert(symbol, state):
-                continue
+                    send_telegram(message)
+                    print(f"Sent: {symbol} — {signal['state']}")
 
-            message = (
-                f"{symbol}\n\n"
-                f"Price: {price:.2f} • {percent_change:.2f}%\n\n"
-                f"{signal['emoji']}\n\n"
-                f"Structure:\n"
-                f"Volume: {signal['volume']}\n"
-                f"Velocity: {signal['velocity']}"
-            )
-
-            send_telegram(message)
-
-            print(f"Sent: {symbol} — {state}")
+            except Exception as e:
+                print(f"Error with {symbol}: {e}")
 
         time.sleep(CHECK_INTERVAL)
 
