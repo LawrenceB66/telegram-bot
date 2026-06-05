@@ -1,80 +1,34 @@
 # =========================
-# SIGNAL LOGIC (WITH FILTER)
+# SIGNAL CLASSIFICATION
 # =========================
 
-def passes_quality_filter(signal, price_change, volume, velocity):
-    """
-    Selective Intelligence Layer
-    Filters weak / noisy signals BEFORE alerting
-    """
+def classify_signal(price, change_pct, volume, velocity):
+    try:
+        # STATE LOGIC
+        if change_pct >= 6:
+            state = "EXTENDED"
+        elif change_pct >= 3.5:
+            state = "EXPANSION"
+        elif change_pct > 1:
+            state = "LOADED"
+        elif change_pct > 0:
+            state = "BUILDING"
+        elif change_pct < -3:
+            state = "FAILURE"
+        else:
+            state = "EXHAUSTION"
 
-    # 🚫 Ignore weak downside moves
-    if signal == "FAILURE" and abs(price_change) < 5:
-        return False
+        # RETURN AS DICTIONARY (CRITICAL FIX)
+        return {
+            "state": state,
+            "volume": volume,
+            "velocity": velocity
+        }
 
-    # 🚫 Ignore low participation
-    if volume == "NORMAL":
-        return False
-
-    # 🚫 Ignore weak momentum
-    if velocity in ["SLOW", "STALLING"]:
-        return False
-
-    return True
-
-
-def classify_signal(price_change, volume, velocity):
-    """
-    Core signal classification (UNCHANGED STRUCTURE)
-    """
-
-    # 💣 TIME BOMB (LOADED)
-    if price_change >= 5 and volume == "EXPANDING" and velocity == "ACCELERATING":
-        return "LOADED", "💣"
-
-    # 💣 TIME BOMB (EXTENDED)
-    if price_change >= 8 and volume == "EXPANDING" and velocity == "EXTREME":
-        return "EXTENDED", "💣"
-
-    # 🔥 PRESSURE COOKER
-    if price_change >= 3.5 and volume == "ELEVATED" and velocity == "BUILDING":
-        return "BUILDING", "🔥"
-
-    # ⚡ MOVERS
-    if price_change >= 6 and volume == "SURGING" and velocity == "HIGH":
-        return "EXPANSION", "⚡"
-
-    # 🩸 BREAKDOWN
-    if price_change <= -3.5 and volume == "ELEVATED" and velocity == "REVERSING":
-        return "FAILURE", "🩸"
-
-    # ⚠️ EXHAUSTION
-    if price_change >= 10 and volume == "EXTREME" and velocity == "STALLING":
-        return "EXHAUSTION", "⚠️"
-
-    return None, None
-
-
-def process_signal(symbol, price_change, volume, velocity):
-    """
-    FULL PIPELINE:
-    classify → filter → return final signal
-    """
-
-    state, emoji = classify_signal(price_change, volume, velocity)
-
-    if not state:
-        return None
-
-    # 🔒 APPLY FILTER HERE
-    if not passes_quality_filter(state, price_change, volume, velocity):
-        return None
-
-    return {
-        "symbol": symbol,
-        "state": state,
-        "emoji": emoji,
-        "volume": volume,
-        "velocity": velocity,
-        "price_change": price_change
-    }
+    except Exception as e:
+        print(f"Signal logic error: {e}")
+        return {
+            "state": "ERROR",
+            "volume": "N/A",
+            "velocity": "N/A"
+        }
