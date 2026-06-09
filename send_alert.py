@@ -1,5 +1,3 @@
-# IAL_CLEAN_v1
-
 import os
 import requests
 
@@ -9,9 +7,9 @@ CHAT_ID = os.getenv("CHAT_ID")
 def send_alert(symbol, price, change_pct, signal):
 
     try:
-        state = signal.get("state", "UNKNOWN")
-        volume = signal.get("volume", "N/A")
-        velocity = signal.get("velocity", "N/A")
+        state = str(signal.get("state") or "UNKNOWN")
+        volume = str(signal.get("volume") or "N/A")
+        velocity = str(signal.get("velocity") or "N/A")
 
         message = (
             "#" + symbol + "\n" +
@@ -29,10 +27,7 @@ def send_alert(symbol, price, change_pct, signal):
             "text": message
         }
 
-        response = requests.post(url, data=payload, timeout=5)
-
-        print("TELEGRAM STATUS:", response.status_code)
-        print("TELEGRAM RESPONSE:", response.text)
+        requests.post(url, data=payload, timeout=5)
 
     except Exception as e:
         print("Send alert error:", e)
