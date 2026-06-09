@@ -2,6 +2,8 @@ import time
 import requests
 import os
 
+print("BOT VERSION FORCE 2")
+
 from signal_logic import classify_signal
 from send_alert import send_alert
 
@@ -50,9 +52,8 @@ def run():
             try:
                 price, change_pct = get_price(symbol)
 
-                # HARD FILTER — NO BAD DATA PASSES
                 if price is None or change_pct is None:
-                    print("Skipping " + symbol + " due to bad data")
+                    print("SKIPPING BAD DATA:", symbol)
                     continue
 
                 volume = "NORMAL"
@@ -67,13 +68,12 @@ def run():
 
                 send_alert(symbol, price, change_pct, signal)
 
-                print("Sent:", symbol, "-", signal.get("state"))
+                print("SENT CLEAN:", symbol, "-", signal.get("state"))
 
             except Exception as e:
                 print("Error with " + symbol + ":", e)
 
         time.sleep(CHECK_INTERVAL)
-
 
 if __name__ == "__main__":
     run()
