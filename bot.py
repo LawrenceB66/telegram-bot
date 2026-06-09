@@ -20,22 +20,25 @@ CHECK_INTERVAL = 30
 
 def get_price(symbol):
     try:
-        url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={API_KEY}"
+        url = "https://finnhub.io/api/v1/quote?symbol=" + symbol + "&token=" + API_KEY
         res = requests.get(url, timeout=5)
         data = res.json()
 
-        price = float(data.get("c", 0))
-        prev_close = float(data.get("pc", 0))
+        price = data.get("c")
+        prev_close = data.get("pc")
 
-        if prev_close == 0:
+        if price is None or prev_close is None or prev_close == 0:
             return None, None
+
+        price = float(price)
+        prev_close = float(prev_close)
 
         change_pct = ((price - prev_close) / prev_close) * 100
 
         return price, change_pct
 
     except Exception as e:
-        print(f"Error fetching {symbol}: {e}")
+        print("Error fetching " + symbol + ":", e)
         return None, None
 
 
@@ -47,10 +50,11 @@ def run():
             try:
                 price, change_pct = get_price(symbol)
 
-                if price is None:
+                # HARD FILTER — NO BAD DATA PASSES
+                if price is None or change_pct is None:
+                    print("Skipping " + symbol + " due to bad data")
                     continue
 
-                # TEMP PLACEHOLDERS (SAFE)
                 volume = "NORMAL"
                 velocity = "NORMAL"
 
@@ -63,10 +67,10 @@ def run():
 
                 send_alert(symbol, price, change_pct, signal)
 
-                print(f"Sent: {symbol} — {signal['state']}")
+                print("Sent:", symbol, "-", signal.get("state"))
 
             except Exception as e:
-                print(f"Error with {symbol}: {e}")
+                print("Error with " + symbol + ":", e)
 
         time.sleep(CHECK_INTERVAL)
 
