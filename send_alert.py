@@ -1,40 +1,46 @@
-# =========================
-# SIGNAL CLASSIFICATION ENGINE
-# =========================
+print("IAL FORCE VERSION 5")
 
-def classify_signal(price, change_pct, volume, velocity):
+import os
+import requests
+
+BOT_TOKEN = os.getenv("TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
+
+def send_alert(symbol, price, change_pct, signal):
+
     try:
-        # =========================
-        # STATE CLASSIFICATION
-        # =========================
+        # HARD PROTECTION — SIGNAL MUST EXIST
+        if signal is None:
+            print("SKIPPING — SIGNAL IS NONE:", symbol)
+            return
 
-        if change_pct >= 6:
-            state = "EXTENDED"
-        elif change_pct >= 3.5:
-            state = "EXPANSION"
-        elif change_pct > 1:
-            state = "LOADED"
-        elif change_pct > 0:
-            state = "BUILDING"
-        elif change_pct < -3:
-            state = "FAILURE"
-        else:
-            state = "EXHAUSTION"
+        # SAFE EXTRACTION
+        state = str(signal.get("state") or "UNKNOWN")
+        volume = str(signal.get("volume") or "N/A")
+        velocity = str(signal.get("velocity") or "N/A")
 
-        # =========================
-        # RETURN STRUCTURED OBJECT
-        # =========================
+        # SAFE NUMBERS
+        price_str = format(price if price is not None else 0, ".2f")
+        change_str = format(change_pct if change_pct is not None else 0, ".2f")
 
-        return {
-            "state": state,
-            "volume": volume,
-            "velocity": velocity
+        # MESSAGE BUILD
+        message = (
+            "#" + symbol + "\n" +
+            "Price: $" + price_str + " | " + change_str + "%\n\n" +
+            state + "\n\n" +
+            "Structure:\n" +
+            "Volume: " + volume + "\n" +
+            "Velocity: " + velocity
+        )
+
+        url = "https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage"
+
+        payload = {
+            "chat_id": CHAT_ID,
+            "text": message
         }
+
+        requests.post(url, data=payload, timeout=5)
 
     except Exception as e:
-        print(f"Signal logic error: {e}")
-        return {
-            "state": "ERROR",
-            "volume": "N/A",
-            "velocity": "N/A"
-        }
+        print("Send alert error:", e)
