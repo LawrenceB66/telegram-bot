@@ -11,16 +11,21 @@ STATE_FILE = "state.json"
 def load_state():
     if not os.path.exists(STATE_FILE):
         return {}
+
     try:
         with open(STATE_FILE, "r") as f:
             return json.load(f)
-    except:
+    except Exception as e:
+        print(f"State load error: {e}")
         return {}
 
 
 def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
+    try:
+        with open(STATE_FILE, "w") as f:
+            json.dump(state, f, indent=4)
+    except Exception as e:
+        print(f"State save error: {e}")
 
 
 def should_alert(symbol, new_state):
