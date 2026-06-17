@@ -4,7 +4,7 @@ import os
 
 import requests
 
-BOT_TOKEN = os.getenv("TOKEN")
+BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 CHAT_ID = os.getenv("CHAT_ID")
 
@@ -22,7 +22,7 @@ def send_alert(symbol, price, change_pct, signal):
 
         if not BOT_TOKEN or not CHAT_ID:
 
-            print("ERROR: Missing TOKEN or CHAT_ID")
+            print("ERROR: Missing TELEGRAM_TOKEN or CHAT_ID")
 
             return
 
