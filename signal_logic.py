@@ -121,3 +121,32 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
         if (
             previous_state in ["BUILDING", "LOADED", "EXPANSION", "EXTENDED"]
             and change_pct < 2
+            and volume in ["ELEVATED", "EXPANDING", "SURGING", "EXTREME"]
+            and velocity in ["REVERSING", "NEGATIVE"]
+        ):
+            return {
+                "emoji": "🩸",
+                "name": "Breakdown",
+                "state": "FAILURE",
+                "volume": "ELEVATED",
+                "velocity": "REVERSING",
+                "read": "Momentum is breaking down. The move is losing structure under pressure. This may signal a failed setup or unwind."
+            }
+
+        # =========================
+        # 7. BASELINE — NO ALERT
+        # =========================
+
+        return {
+            "state": "BASELINE",
+            "volume": volume,
+            "velocity": velocity
+        }
+
+    except Exception as e:
+        print(f"Signal logic error: {e}")
+        return {
+            "state": "ERROR",
+            "volume": "N/A",
+            "velocity": "N/A"
+        }
