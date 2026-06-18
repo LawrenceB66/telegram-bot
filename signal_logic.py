@@ -1,49 +1,123 @@
 # =========================
-# SIGNAL CLASSIFICATION ENGINE
+# IAL SIGNAL CLASSIFICATION ENGINE
+# GLOBAL SIGNAL STRUCTURE v2.0 LOCKED BASELINE
 # =========================
 
-BUILDING_THRESHOLD = 0
-LOADED_THRESHOLD = 1
-EXPANSION_THRESHOLD = 3.5
-EXTENDED_THRESHOLD = 6
-FAILURE_THRESHOLD = -3
+def classify_signal(price, change_pct, volume, velocity, previous_state=None):
+    """
+    Signal = State, not price alone.
 
+    Required inputs:
+    - price
+    - change_pct
+    - volume label / condition
+    - velocity label / condition
+    - previous_state for breakdown validation
+    """
 
-def classify_signal(price, change_pct, volume, velocity):
     try:
         change_pct = float(change_pct)
 
-        # =========================
-        # STATE CLASSIFICATION
-        # =========================
-
-        if change_pct >= EXTENDED_THRESHOLD:
-            state = "EXTENDED"
-        elif change_pct >= EXPANSION_THRESHOLD:
-            state = "EXPANSION"
-        elif change_pct > LOADED_THRESHOLD:
-            state = "LOADED"
-        elif change_pct > BUILDING_THRESHOLD:
-            state = "BUILDING"
-        elif change_pct <= FAILURE_THRESHOLD:
-            state = "FAILURE"
-        else:
-            state = "EXHAUSTION"
+        volume = str(volume).upper()
+        velocity = str(velocity).upper()
 
         # =========================
-        # RETURN STRUCTURED OBJECT
+        # 1. TICKING TIME BOMB — EXTENDED
+        # Priority: highest
         # =========================
 
-        return {
-            "state": state,
-            "volume": volume,
-            "velocity": velocity
-        }
+        if (
+            change_pct >= 8
+            and volume in ["EXPANDING", "EXTREME", "SURGING"]
+            and velocity in ["EXTREME", "HIGH"]
+        ):
+            return {
+                "emoji": "💣",
+                "name": "Ticking Time Bomb",
+                "state": "EXTENDED",
+                "volume": "EXPANDING",
+                "velocity": "EXTREME",
+                "read": "Pressure has fully expanded. The move is extended with high momentum. Volatility is elevated — proceed with caution."
+            }
 
-    except Exception as e:
-        print(f"Signal logic error: {e}")
-        return {
-            "state": "ERROR",
-            "volume": "N/A",
-            "velocity": "N/A"
-        }
+        # =========================
+        # 2. TICKING TIME BOMB — LOADED
+        # =========================
+
+        if (
+            change_pct >= 5
+            and volume in ["EXPANDING", "SURGING"]
+            and velocity in ["ACCELERATING", "HIGH", "EXTREME"]
+        ):
+            return {
+                "emoji": "💣",
+                "name": "Ticking Time Bomb",
+                "state": "LOADED",
+                "volume": "EXPANDING",
+                "velocity": "ACCELERATING",
+                "read": "Pressure conditions are actively expanding. Volume and momentum are aligned. Setup is unstable and may accelerate."
+            }
+
+        # =========================
+        # 3. EXHAUSTION — NON-PRIMARY CAUTION STATE
+        # =========================
+
+        if (
+            change_pct >= 10
+            and volume in ["EXTREME", "SURGING"]
+            and velocity in ["STALLING", "SLOWING"]
+        ):
+            return {
+                "emoji": "⚠️",
+                "name": "Exhaustion",
+                "state": "EXHAUSTION",
+                "volume": "EXTREME",
+                "velocity": "STALLING",
+                "read": "The move is extended and momentum is slowing. This is not a new setup — risk of reversal or consolidation is increasing."
+            }
+
+        # =========================
+        # 4. PRESSURE COOKER
+        # =========================
+
+        if (
+            change_pct >= 3.5
+            and volume in ["ELEVATED", "EXPANDING", "SURGING"]
+            and velocity in ["BUILDING", "MODERATE"]
+        ):
+            return {
+                "emoji": "🔥",
+                "name": "Pressure Cooker",
+                "state": "BUILDING",
+                "volume": "ELEVATED",
+                "velocity": "BUILDING",
+                "read": "Pressure is building beneath the surface. Volume is increasing while price remains controlled. Early-stage setup — attention required."
+            }
+
+        # =========================
+        # 5. MOVERS
+        # Does NOT override Time Bomb
+        # =========================
+
+        if (
+            change_pct >= 6
+            and volume in ["SURGING", "EXPANDING"]
+            and velocity == "HIGH"
+        ):
+            return {
+                "emoji": "⚡️",
+                "name": "Movers",
+                "state": "EXPANSION",
+                "volume": "SURGING",
+                "velocity": "HIGH",
+                "read": "Strong directional movement confirmed. Volume and momentum are aligned. This is an active expansion phase."
+            }
+
+        # =========================
+        # 6. BREAKDOWN
+        # Requires previous strength
+        # =========================
+
+        if (
+            previous_state in ["BUILDING", "LOADED", "EXPANSION", "EXTENDED"]
+            and change_pct < 2
