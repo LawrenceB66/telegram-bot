@@ -17,47 +17,124 @@ TICKERS = [
 ]
 
 CHECK_INTERVAL = 30
+CANDLE_RESOLUTION = "1"
+CANDLE_LOOKBACK_SECONDS = 1800
 
 
-def get_price(symbol):
+def get_market_data(symbol):
     try:
         if not API_KEY:
             print("ERROR: FINNHUB_API_KEY not found")
-            return None, None
+            return None
 
-        url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={API_KEY}"
-        res = requests.get(url, timeout=5)
-        data = res.json()
+        quote_url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={API_KEY}"
+        quote = requests.get(quote_url, timeout=5).json()
 
-        price = float(data.get("c", 0))
-        prev_close = float(data.get("pc", 0))
+        price = float(quote.get("c", 0))
+        prev_close = float(quote.get("pc", 0))
 
         if price == 0 or prev_close == 0:
-            return None, None
+            return None
 
         change_pct = ((price - prev_close) / prev_close) * 100
 
-        return price, change_pct
+        now = int(time.time())
+        start = now - CANDLE_LOOKBACK_SECONDS
+
+        candle_url = (
+            f"https://finnhub.io/api/v1/stock/candle"
+            f"?symbol={symbol}&resolution={CANDLE_RESOLUTION}"
+            f"&from={start}&to={now}&token={API_KEY}"
+        )
+
+        candles = requests.get(candle_url, timeout=5).json()
+
+        closes = candles.get("c", [])
+        volumes = candles.get("v", [])
+
+        if not closes or not volumes or len(closes) < 5 or len(volumes) < 5:
+            return None
+
+        return {
+            "price": price,
+            "change_pct": change_pct,
+            "closes": closes,
+            "volumes": volumes
+        }
 
     except Exception as e:
         print(f"Error fetching {symbol}: {e}")
-        return None, None
+        return None
+
+
+def build_structure(market_data):
+    change_pct = market_data["change_pct"]
+    closes = market_data["closes"]
+    volumes = market_data["volumes"]
+
+    current_volume = volumes[-1]
+    avg_volume = sum(volumes[:-1]) / max(len(volumes[:-1]), 1)
+
+    if avg_volume == 0:
+        rvol = 0
+    else:
+        rvol = current_volume / avg_volume
+
+    recent_change = ((closes[-1] - closes[-4]) / closes[-4]) * 100
+
+    # =========================
+    # VOLUME LABEL FROM RVOL
+    # =========================
+
+    if rvol >= 3.0:
+        volume = "EXTREME"
+    elif rvol >= 2.5:
+        volume = "SURGING"
+    elif rvol >= 2.0:
+        volume = "EXPANDING"
+    elif rvol >= 1.5:
+        volume = "ELEVATED"
+    else:
+        volume = "NORMAL"
+
+    # =========================
+    # VELOCITY LABEL FROM RECENT PRICE ACTION
+    # =========================
+
+    if change_pct >= 10 and recent_change <= 0:
+        velocity = "STALLING"
+    elif recent_change >= 1.0:
+        velocity = "EXTREME"
+    elif recent_change >= 0.50:
+        velocity = "ACCELERATING"
+    elif recent_change >= 0.20:
+        velocity = "HIGH"
+    elif recent_change <= -0.50:
+        velocity = "REVERSING"
+    elif recent_change >= 0:
+        velocity = "BUILDING"
+    else:
+        velocity = "MODERATE"
+
+    return volume, velocity, rvol, recent_change
 
 
 def run():
-    print("IAL ENGINE LIVE")
+    print("IAL ENGINE LIVE — LOCKED STRUCTURE ACTIVE")
 
     while True:
         for symbol in TICKERS:
             try:
-                price, change_pct = get_price(symbol)
+                market_data = get_market_data(symbol)
 
-                if price is None or change_pct is None:
+                if not market_data:
                     print(f"SKIPPING {symbol} — bad data")
                     continue
 
-                volume = "NORMAL"
-                velocity = "NORMAL"
+                price = market_data["price"]
+                change_pct = market_data["change_pct"]
+
+                volume, velocity, rvol, recent_change = build_structure(market_data)
 
                 signal = classify_signal(
                     price,
@@ -67,6 +144,15 @@ def run():
                 )
 
                 state = signal.get("state", "UNKNOWN")
+
+                if state == "BASELINE":
+                    print(
+                        f"BASELINE: {symbol} | "
+                        f"{round(change_pct, 2)}% | "
+                        f"RVOL {round(rvol, 2)} | "
+                        f"{volume}/{velocity}"
+                    )
+                    continue
 
                 if should_alert(symbol, state):
                     send_alert(symbol, price, change_pct, signal)
