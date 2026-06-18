@@ -18,7 +18,7 @@ TICKERS = [
 
 CHECK_INTERVAL = 30
 CANDLE_RESOLUTION = "1"
-CANDLE_LOOKBACK_SECONDS = 1800
+CANDLE_LOOKBACK_SECONDS = 3600
 
 
 def get_market_data(symbol):
@@ -34,6 +34,7 @@ def get_market_data(symbol):
         prev_close = float(quote.get("pc", 0))
 
         if price == 0 or prev_close == 0:
+            print(f"{symbol} QUOTE BAD:", quote)
             return None
 
         change_pct = ((price - prev_close) / prev_close) * 100
@@ -51,6 +52,18 @@ def get_market_data(symbol):
 
         closes = candles.get("c", [])
         volumes = candles.get("v", [])
+        status = candles.get("s", "missing")
+
+        print(
+            f"{symbol} DATA CHECK | "
+            f"QUOTE OK | "
+            f"CANDLE STATUS: {status} | "
+            f"CLOSES: {len(closes)} | "
+            f"VOLUMES: {len(volumes)}"
+        )
+
+        if status != "ok":
+            return None
 
         if not closes or not volumes or len(closes) < 5 or len(volumes) < 5:
             return None
@@ -82,10 +95,6 @@ def build_structure(market_data):
 
     recent_change = ((closes[-1] - closes[-4]) / closes[-4]) * 100
 
-    # =========================
-    # VOLUME LABEL FROM RVOL
-    # =========================
-
     if rvol >= 3.0:
         volume = "EXTREME"
     elif rvol >= 2.5:
@@ -96,10 +105,6 @@ def build_structure(market_data):
         volume = "ELEVATED"
     else:
         volume = "NORMAL"
-
-    # =========================
-    # VELOCITY LABEL FROM RECENT PRICE ACTION
-    # =========================
 
     if change_pct >= 10 and recent_change <= 0:
         velocity = "STALLING"
@@ -120,7 +125,7 @@ def build_structure(market_data):
 
 
 def run():
-    print("IAL ENGINE LIVE — LOCKED STRUCTURE ACTIVE")
+    print("IAL ENGINE LIVE — LOCKED STRUCTURE DIAGNOSTIC ACTIVE")
 
     while True:
         for symbol in TICKERS:
@@ -150,6 +155,7 @@ def run():
                         f"BASELINE: {symbol} | "
                         f"{round(change_pct, 2)}% | "
                         f"RVOL {round(rvol, 2)} | "
+                        f"RECENT {round(recent_change, 2)}% | "
                         f"{volume}/{velocity}"
                     )
                     continue
