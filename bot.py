@@ -17,8 +17,22 @@ TICKERS = [
 ]
 
 CHECK_INTERVAL = 30
+
 CANDLE_RESOLUTION = "1"
-CANDLE_LOOKBACK_SECONDS = 3600
+CANDLE_LOOKBACK_SECONDS = 259200  # 3 days
+CANDLE_DELAY_SECONDS = 300        # avoid incomplete newest candle
+
+
+def get_json(url, label):
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code != 200:
+            print(f"{label} HTTP ERROR:", response.status_code, response.text[:200])
+            return None
+        return response.json()
+    except Exception as e:
+        print(f"{label} REQUEST ERROR:", e)
+        return None
 
 
 def get_market_data(symbol):
@@ -27,8 +41,11 @@ def get_market_data(symbol):
             print("ERROR: FINNHUB_API_KEY not found")
             return None
 
-        quote_url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={API_KEY}"
-        quote = requests.get(quote_url, timeout=5).json()
+        quote_url = f"https://na01.safelinks.protection.outlook.com/?url=https%3A%2F%2Ffinnhub.io%2Fapi%2Fv1%2Fquote%3Fsymbol%3D&data=05%7C02%7C%7C8dd5e897d568468a876308ded2d30f9a%7C84df9e7fe9f640afb435aaaaaaaaaaaa%7C1%7C0%7C639180001102574257%7CUnknown%7CTWFpbGZsb3d8eyJFbXB0eU1hcGkiOnRydWUsIlYiOiIwLjAuMDAwMCIsIlAiOiJXaW4zMiIsIkFOIjoiTWFpbCIsIldUIjoyfQ%3D%3D%7C0%7C%7C%7C&sdata=QyZqezL3hMXbWZyqQ%2BlRJDv%2FC%2B38iLhY%2BA%2FEVjCvXOk%3D&reserved=0{symbol}&token={API_KEY}"
+        quote = get_json(quote_url, f"{symbol} QUOTE")
+
+        if not quote:
+            return None
 
         price = float(quote.get("c", 0))
         prev_close = float(quote.get("pc", 0))
@@ -39,34 +56,53 @@ def get_market_data(symbol):
 
         change_pct = ((price - prev_close) / prev_close) * 100
 
-        now = int(time.time())
+        now = int(time.time()) - CANDLE_DELAY_SECONDS
         start = now - CANDLE_LOOKBACK_SECONDS
 
         candle_url = (
-            f"https://finnhub.io/api/v1/stock/candle"
-            f"?symbol={symbol}&resolution={CANDLE_RESOLUTION}"
-            f"&from={start}&to={now}&token={API_KEY}"
+            f"https://na01.safelinks.protection.outlook.com/?url=https%3A%2F%2Ffinnhub.io%2Fapi%2Fv1%2Fstock%2Fcandle&data=05%7C02%7C%7C8dd5e897d568468a876308ded2d30f9a%7C84df9e7fe9f640afb435aaaaaaaaaaaa%7C1%7C0%7C639180001102608204%7CUnknown%7CTWFpbGZsb3d8eyJFbXB0eU1hcGkiOnRydWUsIlYiOiIwLjAuMDAwMCIsIlAiOiJXaW4zMiIsIkFOIjoiTWFpbCIsIldUIjoyfQ%3D%3D%7C0%7C%7C%7C&sdata=oQYEOCSeHg%2FtNzrRH97xxOvOKWqPzGW8ONHIWs97CGk%3D&reserved=0"
+            f"?symbol={symbol}"
+            f"&resolution={CANDLE_RESOLUTION}"
+            f"&from={start}"
+            f"&to={now}"
+            f"&token={API_KEY}"
         )
 
-        candles = requests.get(candle_url, timeout=5).json()
+        candles = get_json(candle_url, f"{symbol} CANDLES")
 
+        if not candles:
+            return None
+
+        status = candles.get("s", "missing")
         closes = candles.get("c", [])
         volumes = candles.get("v", [])
-        status = candles.get("s", "missing")
+        timestamps = candles.get("t", [])
 
         print(
             f"{symbol} DATA CHECK | "
             f"QUOTE OK | "
             f"CANDLE STATUS: {status} | "
             f"CLOSES: {len(closes)} | "
-            f"VOLUMES: {len(volumes)}"
+            f"VOLUMES: {len(volumes)} | "
+            f"TIMES: {len(timestamps)}"
         )
 
         if status != "ok":
+            print(f"{symbol} CANDLE BAD:", candles)
             return None
 
-        if not closes or not volumes or len(closes) < 5 or len(volumes) < 5:
+        cleaned = [
+            (c, v)
+            for c, v in zip(closes, volumes)
+            if c is not None and v is not None and float(c) > 0 and float(v) > 0
+        ]
+
+        if len(cleaned) < 5:
+            print(f"{symbol} CANDLE INSUFFICIENT AFTER CLEANING:", len(cleaned))
             return None
+
+        closes = [float(item[0]) for item in cleaned]
+        volumes = [float(item[1]) for item in cleaned]
 
         return {
             "price": price,
@@ -86,14 +122,19 @@ def build_structure(market_data):
     volumes = market_data["volumes"]
 
     current_volume = volumes[-1]
-    avg_volume = sum(volumes[:-1]) / max(len(volumes[:-1]), 1)
+    prior_volumes = volumes[:-1]
+
+    avg_volume = sum(prior_volumes) / max(len(prior_volumes), 1)
 
     if avg_volume == 0:
         rvol = 0
     else:
         rvol = current_volume / avg_volume
 
-    recent_change = ((closes[-1] - closes[-4]) / closes[-4]) * 100
+    if closes[-4] == 0:
+        recent_change = 0
+    else:
+        recent_change = ((closes[-1] - closes[-4]) / closes[-4]) * 100
 
     if rvol >= 3.0:
         volume = "EXTREME"
@@ -125,7 +166,7 @@ def build_structure(market_data):
 
 
 def run():
-    print("IAL ENGINE LIVE — LOCKED STRUCTURE DIAGNOSTIC ACTIVE")
+    print("IAL ENGINE LIVE — CANDLE PIPELINE RESTORE v1.0")
 
     while True:
         for symbol in TICKERS:
