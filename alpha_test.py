@@ -34,7 +34,7 @@ url = (
 
     f"&symbol={symbol}"
 
-    f"&interval=5min"
+    f"&interval=1min"
 
     f"&entitlement=realtime"
 
