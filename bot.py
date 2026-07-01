@@ -7,6 +7,8 @@ from send_alert import send_alert
 from state_engine import should_alert
 
 API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
+print("ENVIRONMENT VARIABLES:")
+print(sorted(os.environ.keys()))
 
 print("=" * 60)
 print("IAL STARTUP DIAGNOSTICS")
