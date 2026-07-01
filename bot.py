@@ -7,8 +7,10 @@ from send_alert import send_alert
 from state_engine import should_alert
 
 API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
-print("ENVIRONMENT VARIABLES:")
-print(sorted(os.environ.keys()))
+
+print("API_KEY repr:", repr(API_KEY))
+print("API_KEY type:", type(API_KEY))
+print("API_KEY len:", len(API_KEY) if API_KEY is not None else "None")
 
 print("=" * 60)
 print("IAL STARTUP DIAGNOSTICS")
@@ -246,7 +248,6 @@ def run():
                 print(f"Error with {symbol}: {e}")
 
         time.sleep(CHECK_INTERVAL)
-
 
 if __name__ == "__main__":
     run()
