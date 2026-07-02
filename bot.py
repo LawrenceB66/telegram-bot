@@ -159,7 +159,7 @@ def build_structure(market_data):
     volumes = market_data["volumes"]
 
     current_volume = volumes[-1]
-    prior = volumes[:-1]
+    prior = volumes[:-21:-1]
     avg = sum(prior) / max(len(prior), 1)
     rvol = 0 if avg == 0 else current_volume / avg
 
