@@ -30,7 +30,26 @@ TICKERS = [
     "SOFI", "HOOD", "AFRM", "DKNG",
     "MARA", "RIOT", "COIN",
     "AI", "PLTR",
-    "LCID", "RIVN", "NIO", "XPEV"
+    "LCID", "RIVN", "NIO", "XPEV",
+
+    "TSLA", "AAPL", "MSFT", "NVDA",
+    "META", "AMZN", "GOOGL",
+
+    "AMD", "AVGO", "TSM", "MU",
+    "QCOM",
+
+    "CRM", "ORCL", "SNOW", "NET",
+    "CRWD", "DDOG",
+
+    "JPM", "GS", "BAC",
+
+    "LLY", "UNH",
+
+    "GE", "CAT",
+
+    "NFLX", "COST", "WMT",
+
+    "SPY", "QQQ", "IWM"
 ]
 
 CHECK_INTERVAL = 30
