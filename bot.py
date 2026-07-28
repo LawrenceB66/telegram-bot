@@ -49,12 +49,12 @@ def get_market_data(symbol):
             print("ERROR: ALPHA_VANTAGE_API_KEY not found")
             return None
 
-       quote_url = (
-           f"https://www.alphavantage.co/query"
-           f"?function=GLOBAL_QUOTE"
-           f"&symbol={symbol}"
-           f"&entitlement=realtime"
-           f"&apikey={API_KEY}"
+        quote_url = (
+            f"https://www.alphavantage.co/query"
+            f"?function=GLOBAL_QUOTE"
+            f"&symbol={symbol}"
+            f"&entitlement=realtime"
+            f"&apikey={API_KEY}"
 
         )
 
