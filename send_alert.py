@@ -26,12 +26,8 @@ def send_alert(symbol, price, change_pct, signal):
         velocity = signal.get("velocity", "N/A")
         read = signal.get("read", "")
 
-        # Placeholder until sectors are added to watchlist.py
-        sector = signal.get("sector", "Unknown")
-
         message = (
             f"#{symbol}\n\n"
-            f"Sector: {sector}\n\n"
             f"Price: ${price_str} • {change_str}%\n\n"
             f"{emoji} {name}\n\n"
             f"Structure:\n"
