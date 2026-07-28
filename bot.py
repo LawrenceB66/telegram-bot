@@ -1,7 +1,9 @@
-import time
-import requests
 import os
+import time
 
+import requests
+
+from watchlist import TICKERS
 from signal_logic import classify_signal
 from send_alert import send_alert
 from state_engine import should_alert
@@ -24,33 +26,6 @@ else:
     print("ALPHA VANTAGE KEY FOUND: NO")
 
 print("=" * 60)
-
-TICKERS = [
-    "AMC", "GME", "CVNA", "UPST",
-    "SOFI", "HOOD", "AFRM", "DKNG",
-    "MARA", "RIOT", "COIN",
-    "AI", "PLTR",
-    "LCID", "RIVN", "NIO", "XPEV",
-
-    "TSLA", "AAPL", "MSFT", "NVDA",
-    "META", "AMZN", "GOOGL",
-
-    "AMD", "AVGO", "TSM", "MU",
-    "QCOM",
-
-    "CRM", "ORCL", "SNOW", "NET",
-    "CRWD", "DDOG",
-
-    "JPM", "GS", "BAC",
-
-    "LLY", "UNH",
-
-    "GE", "CAT",
-
-    "NFLX", "COST", "WMT",
-
-    "SPY", "QQQ", "IWM"
-]
 
 CHECK_INTERVAL = 30
 INTRADAY_INTERVAL = "5min"
