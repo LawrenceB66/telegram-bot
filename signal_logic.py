@@ -1,6 +1,6 @@
 # =========================
 # IAL SIGNAL CLASSIFICATION ENGINE
-# GLOBAL SIGNAL STRUCTURE v2.0 LOCKED BASELINE
+# GLOBAL SIGNAL STRUCTURE v3.0 LOCKED BASELINE
 # =========================
 
 def classify_signal(price, change_pct, volume, velocity, previous_state=None):
@@ -32,12 +32,12 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
             and velocity in ["EXTREME", "HIGH"]
         ):
             return {
-                "emoji": "💣",
+                "emoji": "💥",
                 "name": "Ticking Time Bomb",
                 "state": "EXTENDED",
                 "volume": "EXPANDING",
                 "velocity": "EXTREME",
-                "read": "Pressure has fully expanded. The move is extended with high momentum. Volatility is elevated — proceed with caution."
+                "read": "Pressure has fully expanded. Elevated volatility warrants caution."
             }
 
         # =========================
@@ -55,7 +55,7 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
                 "state": "LOADED",
                 "volume": "EXPANDING",
                 "velocity": "ACCELERATING",
-                "read": "Pressure conditions are actively expanding. Volume and momentum are aligned. Setup is unstable and may accelerate."
+                "read": "Pressure has entered an active expansion phase. Monitor for continuation."
             }
 
         # =========================
