@@ -30,10 +30,9 @@ def send_alert(symbol, price, change_pct, signal):
             f"#{symbol}\n\n"
             f"Price: ${price_str} • {change_str}%\n\n"
             f"{emoji} {name}\n\n"
-            f"Structure:\n"
             f"Volume: {volume}\n"
             f"Velocity: {velocity}\n\n"
-            f"READ:\n"
+            f"NOTE:\n"
             f"{read}"
         )
 
