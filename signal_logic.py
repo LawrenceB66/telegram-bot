@@ -1,6 +1,6 @@
 # =========================
 # IAL SIGNAL CLASSIFICATION ENGINE
-# GLOBAL SIGNAL STRUCTURE v3.0 LOCKED BASELINE
+# REAL-TIME MARKET STRUCTURE ENGINE v1.0
 # =========================
 
 def classify_signal(price, change_pct, volume, velocity, previous_state=None):
@@ -22,8 +22,8 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
         velocity = str(velocity).upper()
 
         # =========================
-        # 1. TICKING TIME BOMB — EXTENDED
-        # Priority: highest
+        # 1. MOMENTUM SURGE
+        # Highest Priority
         # =========================
 
         if (
@@ -33,15 +33,15 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
         ):
             return {
                 "emoji": "💥",
-                "name": "Ticking Time Bomb",
+                "name": "MOMENTUM SURGE",
                 "state": "EXTENDED",
                 "volume": "EXPANDING",
                 "velocity": "EXTREME",
-                "read": "Pressure has fully expanded. Elevated volatility warrants caution."
+                "read": "Surge confirmed with explosive participation and acceleration."
             }
 
         # =========================
-        # 2. TICKING TIME BOMB — LOADED
+        # 2. ACTIVE EXPANSION
         # =========================
 
         if (
@@ -50,16 +50,16 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
             and velocity in ["ACCELERATING", "HIGH", "EXTREME"]
         ):
             return {
-                "emoji": "💣",
-                "name": "Ticking Time Bomb",
+                "emoji": "⚡",
+                "name": "ACTIVE EXPANSION",
                 "state": "LOADED",
                 "volume": "EXPANDING",
                 "velocity": "ACCELERATING",
-                "read": "Pressure has entered an active expansion phase. Monitor for continuation."
+                "read": "Expansion confirmed with increased participation."
             }
 
         # =========================
-        # 3. EXHAUSTION — NON-PRIMARY CAUTION STATE
+        # 3. EXHAUSTION
         # =========================
 
         if (
@@ -69,15 +69,16 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
         ):
             return {
                 "emoji": "⚠️",
-                "name": "Exhaustion",
+                "name": "EXHAUSTION",
                 "state": "EXHAUSTION",
                 "volume": "EXTREME",
                 "velocity": "STALLING",
-                "read": "The move is extended and momentum is slowing. This is not a new setup — risk of reversal or consolidation is increasing."
+                "read": "Potential trend fatigue; watch for reversal or pause as participation wanes."
             }
 
         # =========================
-        # 4. PRESSURE COOKER
+        # 4. ACTIVE EXPANSION
+        # Early Stage
         # =========================
 
         if (
@@ -86,17 +87,16 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
             and velocity in ["BUILDING", "MODERATE"]
         ):
             return {
-                "emoji": "🔥",
-                "name": "Pressure Cooker",
+                "emoji": "⚡",
+                "name": "ACTIVE EXPANSION",
                 "state": "BUILDING",
                 "volume": "ELEVATED",
                 "velocity": "BUILDING",
-                "read": "Pressure is building beneath the surface. Volume is increasing while price remains controlled. Early-stage setup — attention required."
+                "read": "Expansion confirmed with increased participation."
             }
 
         # =========================
-        # 5. MOVERS
-        # Does NOT override Time Bomb
+        # 5. MOMENTUM SURGE
         # =========================
 
         if (
@@ -105,17 +105,16 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
             and velocity == "HIGH"
         ):
             return {
-                "emoji": "⚡️",
-                "name": "Movers",
+                "emoji": "💥",
+                "name": "MOMENTUM SURGE",
                 "state": "EXPANSION",
                 "volume": "SURGING",
                 "velocity": "HIGH",
-                "read": "Strong directional movement confirmed. Volume and momentum are aligned. This is an active expansion phase."
+                "read": "Surge confirmed with explosive participation and acceleration."
             }
 
         # =========================
         # 6. BREAKDOWN
-        # Requires previous strength
         # =========================
 
         if (
@@ -125,16 +124,16 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
             and velocity in ["REVERSING", "NEGATIVE"]
         ):
             return {
-                "emoji": "🩸",
-                "name": "Breakdown",
+                "emoji": "🔻",
+                "name": "BREAKDOWN",
                 "state": "FAILURE",
                 "volume": "ELEVATED",
                 "velocity": "REVERSING",
-                "read": "Momentum is breaking down. The move is losing structure under pressure. This may signal a failed setup or unwind."
+                "read": "Trend deterioration confirmed; selling participation increasing with downward acceleration."
             }
 
         # =========================
-        # 7. BASELINE — NO ALERT
+        # BASELINE
         # =========================
 
         return {
