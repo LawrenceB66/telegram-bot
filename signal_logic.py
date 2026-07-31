@@ -1,7 +1,7 @@
 # ======================================================
 # IAL SIGNAL CLASSIFICATION ENGINE
-# REAL-TIME MARKET STRUCTURE ENGINE v2.1
-# Signal Calibration
+# REAL-TIME MARKET STRUCTURE ENGINE v2.2
+# Bullish Hierarchy Calibration
 # ======================================================
 
 def classify_signal(price, change_pct, volume, velocity, previous_state=None):
@@ -24,7 +24,7 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
         # =========================
         # 1. EXHAUSTION
-        # Highest Priority Reversal
+        # Highest Priority
         # =========================
 
         if (
@@ -43,13 +43,12 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
         # =========================
         # 2. MOMENTUM SURGE
-        # Highest Bullish State
         # =========================
 
         if (
             change_pct >= 10
             and volume in ["SURGING", "EXTREME"]
-            and velocity in ["EXTREME", "HIGH"]
+            and velocity in ["HIGH", "EXTREME"]
         ):
             return {
                 "emoji": "💥",
@@ -66,8 +65,8 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
         if (
             change_pct >= 7
-            and volume in ["SURGING", "EXPANDING"]
-            and velocity in ["ACCELERATING", "HIGH", "EXTREME"]
+            and volume in ["EXPANDING", "SURGING"]
+            and velocity == "ACCELERATING"
         ):
             return {
                 "emoji": "⚡",
@@ -86,7 +85,7 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
         if (
             change_pct >= 5
             and volume in ["EXPANDING", "SURGING"]
-            and velocity in ["BUILDING", "MODERATE"]
+            and velocity == "BUILDING"
         ):
             return {
                 "emoji": "⚡",
@@ -98,29 +97,11 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
             }
 
         # =========================
-        # 5. MOMENTUM SURGE
+        # 5. BREAKDOWN
         # =========================
 
         if (
-            change_pct >= 8.5
-            and volume in ["SURGING", "EXTREME"]
-            and velocity == "HIGH"
-        ):
-            return {
-                "emoji": "💥",
-                "name": "MOMENTUM SURGE",
-                "state": "EXPANSION",
-                "volume": "SURGING",
-                "velocity": "HIGH",
-                "read": "Strong participation with accelerating pressure."
-            }
-
-        # =========================
-        # 6. BREAKDOWN
-        # =========================
-
-        if (
-            previous_state in ["BUILDING", "LOADED", "EXPANSION", "EXTENDED"]
+            previous_state in ["BUILDING", "LOADED", "EXTENDED"]
             and change_pct < 2
             and volume in ["ELEVATED", "EXPANDING", "SURGING", "EXTREME"]
             and velocity in ["REVERSING", "NEGATIVE"]
