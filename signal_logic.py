@@ -36,8 +36,8 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
         if (
             change_pct >= 10
-            and volume in ["SURGING", "EXTREME"]
-            and velocity in ["HIGH", "EXTREME"]
+            and volume == "EXTREME"
+            and velocity == "EXTREME"
         ):
             return {
 
@@ -47,7 +47,7 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
                 "state": "EXTENDED",
 
-                "volume": "Expanding",
+                "volume": "Extreme",
 
                 "read": "Strong participation with accelerating pressure."
 
