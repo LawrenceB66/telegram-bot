@@ -1,26 +1,4 @@
-# ======================================================
-# IAL SIGNAL CLASSIFICATION ENGINE
-# REAL-TIME MARKET STRUCTURE ENGINE v2.3
-#
-# ENGINEERING PRINCIPLES
-#
-# • We do not predict. We classify.
-# • Every market condition has one classification.
-# • Every classification has one purpose.
-# • Consistency creates trust.
-# ======================================================
-
 def classify_signal(price, change_pct, volume, velocity, previous_state=None):
-    """
-    Signal = State, not price alone.
-
-    Required inputs:
-    - price
-    - change_pct
-    - volume label / condition
-    - velocity label / condition (internal use only)
-    - previous_state
-    """
 
     try:
 
@@ -30,8 +8,7 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
         velocity = str(velocity).upper()
 
         # ==================================================
-        # 1. EXHAUSTION
-        # Highest Priority
+        # EXHAUSTION
         # ==================================================
 
         if (
@@ -39,7 +16,6 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
             and volume in ["EXTREME", "SURGING"]
             and velocity in ["STALLING", "SLOWING"]
         ):
-
             return {
 
                 "emoji": "⚠️",
@@ -50,13 +26,12 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
                 "volume": "Extreme",
 
-                "read":
-                "Momentum slowing after sustained expansion."
+                "read": "Momentum slowing after sustained expansion."
 
             }
 
         # ==================================================
-        # 2. MOMENTUM SURGE
+        # MOMENTUM SURGE
         # ==================================================
 
         if (
@@ -64,7 +39,6 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
             and volume in ["SURGING", "EXTREME"]
             and velocity in ["HIGH", "EXTREME"]
         ):
-
             return {
 
                 "emoji": "💥",
@@ -75,14 +49,12 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
                 "volume": "Expanding",
 
-                "read":
-                "Strong participation with accelerating pressure."
+                "read": "Strong participation with accelerating pressure."
 
             }
 
         # ==================================================
-        # 3. ACTIVE EXPANSION
-        # Loaded Stage
+        # ACTIVE EXPANSION
         # ==================================================
 
         if (
@@ -90,7 +62,6 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
             and volume in ["EXPANDING", "SURGING"]
             and velocity == "ACCELERATING"
         ):
-
             return {
 
                 "emoji": "⚡",
@@ -101,22 +72,15 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
                 "volume": "Expanding",
 
-                "read":
-                "Pressure expanding with increasing participation."
+                "read": "Pressure expanding with increasing participation."
 
             }
-
-        # ==================================================
-        # 4. ACTIVE EXPANSION
-        # Building Stage
-        # ==================================================
 
         if (
             change_pct >= 5
             and volume in ["EXPANDING", "SURGING"]
             and velocity == "BUILDING"
         ):
-
             return {
 
                 "emoji": "⚡",
@@ -127,30 +91,20 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
                 "volume": "Expanding",
 
-                "read":
-                "Pressure building with elevated participation."
+                "read": "Pressure building with elevated participation."
 
             }
 
         # ==================================================
-        # 5. BREAKDOWN
+        # BREAKDOWN
         # ==================================================
 
         if (
             previous_state in ["BUILDING", "LOADED", "EXTENDED"]
             and change_pct < 2
-            and volume in [
-                "ELEVATED",
-                "EXPANDING",
-                "SURGING",
-                "EXTREME"
-            ]
-            and velocity in [
-                "REVERSING",
-                "NEGATIVE"
-            ]
+            and volume in ["ELEVATED", "EXPANDING", "SURGING", "EXTREME"]
+            and velocity in ["REVERSING", "NEGATIVE"]
         ):
-
             return {
 
                 "emoji": "🔻",
@@ -161,8 +115,7 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
                 "volume": "Elevated",
 
-                "read":
-                "Downside pressure increasing across structure."
+                "read": "Downside pressure increasing across structure."
 
             }
 
