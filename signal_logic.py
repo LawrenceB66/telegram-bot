@@ -26,7 +26,7 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
                 "volume": "Extreme",
 
-                "read": "Momentum slowing after sustained expansion."
+                "read": "Price expansion is slowing while participation begins to fade."
 
             }
 
@@ -36,8 +36,8 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
         if (
             change_pct >= 10
-            and volume == "EXTREME"
-            and velocity == "EXTREME"
+            and volume in ["SURGING", "EXTREME"]
+            and velocity in ["EXTREME", "HIGH"]
         ):
             return {
 
@@ -49,7 +49,7 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
                 "volume": "Extreme",
 
-                "read": "Strong participation with accelerating pressure."
+                "read": "Price and participation are expanding together."
 
             }
 
@@ -59,8 +59,8 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
         if (
             change_pct >= 7
-            and volume in ["EXPANDING", "SURGING"]
-            and velocity == "ACCELERATING"
+            and volume in ["SURGING", "EXPANDING"]
+            and velocity in ["ACCELERATING", "HIGH", "EXTREME"]
         ):
             return {
 
@@ -72,14 +72,18 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
                 "volume": "Expanding",
 
-                "read": "Pressure expanding with increasing participation."
+                "read": "Price is expanding with improving participation."
 
             }
+
+        # ==================================================
+        # ACTIVE EXPANSION
+        # ==================================================
 
         if (
             change_pct >= 5
             and volume in ["EXPANDING", "SURGING"]
-            and velocity == "BUILDING"
+            and velocity in ["BUILDING", "MODERATE"]
         ):
             return {
 
@@ -91,7 +95,7 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
                 "volume": "Expanding",
 
-                "read": "Pressure building with elevated participation."
+                "read": "Participation is building behind the current price move."
 
             }
 
@@ -115,7 +119,7 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
                 "volume": "Elevated",
 
-                "read": "Downside pressure increasing across structure."
+                "read": "Participation is weakening as price loses momentum."
 
             }
 
