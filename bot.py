@@ -214,7 +214,7 @@ def run():
     print("IAL ENGINE LIVE — ALPHA VANTAGE TEST")
     print("=" * 60)
 
-        while True:
+    while True:
         for symbol in TICKERS:
             try:
                 md = get_market_data(symbol)
