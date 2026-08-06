@@ -1,4 +1,13 @@
-def classify_signal(price, change_pct, volume, velocity, previous_state=None):
+def classify_signal(
+    price,
+    change_pct,
+    volume,
+    velocity,
+    previous_state=None,
+    rvol=None,
+    participation_pct=None,
+    recent_change=None
+):
 
     try:
 
@@ -6,6 +15,14 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
         volume = str(volume).upper()
         velocity = str(velocity).upper()
+
+        rvol = 0 if rvol is None else float(rvol)
+        participation_pct = (
+            0 if participation_pct is None else float(participation_pct)
+        )
+        recent_change = (
+            0 if recent_change is None else float(recent_change)
+        )
 
         # ==================================================
         # EXHAUSTION
@@ -26,6 +43,8 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
                 "state": "EXHAUSTION",
 
                 "volume": "Extreme",
+
+                "driver": "Price Extension",
 
                 "read": "Price remains extended while participation begins slowing."
 
@@ -50,6 +69,8 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
                 "volume": "Extreme",
 
+                "driver": "Price + Participation",
+
                 "read": "Price and participation are accelerating together."
 
             }
@@ -73,7 +94,17 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
                 "volume": "Expanding",
 
-                "read": "Price is advancing with improving participation."
+                "driver": (
+                    "Balanced Expansion"
+                    if participation_pct >= 50
+                    else "Price Led"
+                ),
+
+                "read": (
+                    "Price and participation continue expanding."
+                    if participation_pct >= 50
+                    else "Price is advancing faster than participation."
+                )
 
             }
 
@@ -96,7 +127,17 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
                 "volume": "Expanding",
 
-                "read": "Participation is strengthening behind the current move."
+                "driver": (
+                    "Participation Led"
+                    if participation_pct >= 50
+                    else "Balanced Expansion"
+                ),
+
+                "read": (
+                    "Participation is building ahead of price."
+                    if participation_pct >= 50
+                    else "Price and participation are improving together."
+                )
 
             }
 
@@ -120,7 +161,9 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
                 "volume": "Elevated",
 
-                "read": "Price is weakening while participation continues to deteriorate."
+                "driver": "Participation Fade",
+
+                "read": "Participation is weakening as price loses momentum."
 
             }
 
@@ -132,7 +175,9 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
             "state": "BASELINE",
 
-            "volume": volume.title()
+            "volume": volume.title(),
+
+            "driver": None
 
         }
 
@@ -144,6 +189,8 @@ def classify_signal(price, change_pct, volume, velocity, previous_state=None):
 
             "state": "ERROR",
 
-            "volume": "N/A"
+            "volume": "N/A",
+
+            "driver": None
 
         }
