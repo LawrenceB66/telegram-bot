@@ -34,17 +34,10 @@ INTRADAY_INTERVAL = "5min"
 def get_json(url, label):
     try:
         response = requests.get(url, timeout=10)
-
         if response.status_code != 200:
-            print(
-                f"{label} HTTP ERROR:",
-                response.status_code,
-                response.text[:200]
-            )
+            print(f"{label} HTTP ERROR:", response.status_code, response.text[:200])
             return None
-
         return response.json()
-
     except Exception as e:
         print(f"{label} REQUEST ERROR:", e)
         return None
@@ -62,10 +55,10 @@ def get_market_data(symbol):
             f"&symbol={symbol}"
             f"&entitlement=realtime"
             f"&apikey={API_KEY}"
+
         )
 
         quote = get_json(quote_url, f"{symbol} QUOTE")
-
         if not quote:
             return None
 
@@ -100,10 +93,10 @@ def get_market_data(symbol):
             f"&outputsize=full"
             f"&entitlement=realtime"
             f"&apikey={API_KEY}"
+        
         )
 
         candles = get_json(candle_url, f"{symbol} INTRADAY")
-
         if not candles:
             return None
 
@@ -120,7 +113,6 @@ def get_market_data(symbol):
             return None
 
         series = candles.get(f"Time Series ({INTRADAY_INTERVAL})")
-
         if not series:
             print(f"{symbol} INTRADAY BAD:", candles)
             return None
@@ -145,97 +137,115 @@ def get_market_data(symbol):
         )
 
         if len(closes) < 5:
-            print(
-                f"{symbol} INSUFFICIENT INTRADAY DATA:",
-                len(closes)
-            )
+            print(f"{symbol} INSUFFICIENT INTRADAY DATA:", len(closes))
             return None
 
         return {
             "price": price,
             "change_pct": change_pct,
             "closes": closes,
+            "volumes": volumes,
+        }
+
+    except Exception as e:
+        print(f"Error fetching {symbol}: {e}")
+        return None
+
+def build_structure(market_data):
+    change_pct = market_data["change_pct"]
+    closes = market_data["closes"]
+    volumes = market_data["volumes"]
+
+    current_volume = volumes[-1]
+    prior = volumes[:-21:-1]
+    avg = sum(prior) / max(len(prior), 1)
+    rvol = 0 if avg == 0 else current_volume / avg
+
+    recent_change = (
+        0
+        if closes[-4] == 0
+        else ((closes[-1] - closes[-4]) / closes[-4]) * 100
+    )
+
+    volume = (
+        "EXTREME" if rvol >= 3 else
+        "SURGING" if rvol >= 2.5 else
+        "EXPANDING" if rvol >= 2 else
+        "ELEVATED" if rvol >= 1.5 else
+        "NORMAL"
+    )
+
+    if change_pct >= 10 and recent_change <= 0:
+        velocity = "STALLING"
+    elif recent_change >= 1:
+        velocity = "EXTREME"
+    elif recent_change >= 0.5:
+        velocity = "ACCELERATING"
+    elif recent_change >= 0.2:
+        velocity = "HIGH"
+    elif recent_change <= -0.5:
+        velocity = "REVERSING"
+    elif recent_change >= 0:
+        velocity = "BUILDING"
+    else:
+        velocity = "MODERATE"
+
+    return volume, velocity, rvol, recent_change
+
 
 def run():
+    print("=" * 60)
+    print("IAL ENGINE LIVE — ALPHA VANTAGE TEST")
+    print("=" * 60)
 
     while True:
-
-        print("=" * 60)
-        print("NEW SCAN")
-        print("=" * 60)
-
         for symbol in TICKERS:
+            try:
+                md = get_market_data(symbol)
 
-            market_data = get_market_data(symbol)
+                if not md:
+                    print(f"SKIPPING {symbol} — bad data")
+                    continue
 
-            if not market_data:
-                print(f"SKIPPING {symbol} - bad data")
-                continue
+                price = md["price"]
+                change_pct = md["change_pct"]
 
-            structure = build_structure(market_data)
+                volume, velocity, rvol, recent_change = build_structure(md)
 
-            signal = classify_signal(
-
-                price=market_data["price"],
-
-                change_pct=market_data["change_pct"],
-
-                volume=structure["volume_label"],
-
-                velocity=structure["velocity_label"],
-
-                rvol=structure["rvol"],
-
-                participation_pct=structure["participation_pct"],
-
-                recent_change=structure["recent_change"]
-
-            )
-
-            if signal["state"] == "BASELINE":
-
-                print(
-                    f"BASELINE: {symbol} | "
-                    f"{market_data['change_pct']:.2f}% | "
-                    f"RVOL {structure['rvol']:.2f}"
+                signal = classify_signal(
+                    price,
+                    change_pct,
+                    volume,
+                    velocity
                 )
 
-                continue
+                state = signal.get("state", "UNKNOWN")
 
-            if not should_alert(symbol, signal["state"]):
+                if state == "BASELINE":
+                    print(
+                        f"BASELINE: {symbol} | "
+                        f"{round(change_pct, 2)}% | "
+                        f"RVOL {round(rvol, 2)} | "
+                        f"RECENT {round(recent_change, 2)}% | "
+                        f"{volume}/{velocity}"
+                    )
+                    continue
 
-                print(f"SUPPRESSED: {symbol}")
+                if should_alert(symbol, state):
+                    send_alert(
+                        symbol,
+                        price,
+                        change_pct,
+                        signal
+                    )
+                    print(f"SENT CLEAN: {symbol} - {state}")
+                else:
+                    print(f"NO DUPLICATE: {symbol} - {state}")
 
-                continue
-
-            send_alert(
-
-                symbol=symbol,
-
-                price=market_data["price"],
-
-                change_pct=market_data["change_pct"],
-
-                signal=signal,
-
-                rvol=structure["rvol"],
-
-                participation_pct=structure["participation_pct"]
-
-            )
-
-            print(
-                f"ALERT: {symbol} | "
-                f"{signal['name']} | "
-                f"RVOL {structure['rvol']:.2f}"
-            )
-
-        print(
-            f"Sleeping {CHECK_INTERVAL} seconds..."
-        )
+            except Exception as e:
+                print(f"Error with {symbol}: {e}")
 
         time.sleep(CHECK_INTERVAL)
-
 
 if __name__ == "__main__":
     run()
