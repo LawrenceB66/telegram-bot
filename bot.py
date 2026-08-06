@@ -214,7 +214,7 @@ def run():
     print("IAL ENGINE LIVE — ALPHA VANTAGE TEST")
     print("=" * 60)
 
-    while True:
+        while True:
         for symbol in TICKERS:
             try:
                 md = get_market_data(symbol)
@@ -226,23 +226,23 @@ def run():
                 price = md["price"]
                 change_pct = md["change_pct"]
 
-   (
-    volume,
-    velocity,
-    rvol,
-    participation_pct,
-    recent_change,
-) = build_structure(md)
+                (
+                    volume,
+                    velocity,
+                    rvol,
+                    participation_pct,
+                    recent_change,
+                ) = build_structure(md)
 
-signal = classify_signal(
-    price=price,
-    change_pct=change_pct,
-    volume=volume,
-    velocity=velocity,
-    rvol=rvol,
-    participation_pct=participation_pct,
-    recent_change=recent_change,
-)
+                signal = classify_signal(
+                    price=price,
+                    change_pct=change_pct,
+                    volume=volume,
+                    velocity=velocity,
+                    rvol=rvol,
+                    participation_pct=participation_pct,
+                    recent_change=recent_change,
+                )
 
                 state = signal.get("state", "UNKNOWN")
 
@@ -257,19 +257,21 @@ signal = classify_signal(
                     continue
 
                 if should_alert(symbol, state):
-send_alert(
-    symbol=symbol,
-    price=price,
-change_pct=change_pct,
-    signal=signal,
-    rvol=rvol,
-participation_pct=participation_pct,
-)
-print(
-    f"ALERT: {symbol} | "
-    f"{signal['name']} | "
-    f"RVOL {rvol:.2f}"
-)
+                    send_alert(
+                        symbol=symbol,
+                        price=price,
+                        change_pct=change_pct,
+                        signal=signal,
+                        rvol=rvol,
+                        participation_pct=participation_pct,
+                    )
+
+                    print(
+                        f"ALERT: {symbol} | "
+                        f"{signal['name']} | "
+                        f"RVOL {rvol:.2f}"
+                    )
+
                 else:
                     print(f"NO DUPLICATE: {symbol} - {state}")
 
@@ -277,6 +279,6 @@ print(
                 print(f"Error with {symbol}: {e}")
 
         time.sleep(CHECK_INTERVAL)
-
+            
 if __name__ == "__main__":
     run()
