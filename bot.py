@@ -158,8 +158,19 @@ def build_structure(market_data):
 
     current_volume = volumes[-1]
     prior = volumes[:-21:-1]
-    avg = sum(prior) / max(len(prior), 1)
-    rvol = 0 if avg == 0 else current_volume / avg
+    average_volume = sum(prior) / max(len(prior), 1)
+
+    rvol = (
+        0
+        if average_volume == 0
+        else current_volume / average_volume
+    )
+
+    participation_pct = (
+        0
+        if average_volume == 0
+        else ((current_volume - average_volume) / average_volume) * 100
+    )
 
     recent_change = (
         0
@@ -190,8 +201,13 @@ def build_structure(market_data):
     else:
         velocity = "MODERATE"
 
-    return volume, velocity, rvol, recent_change
-
+    return (
+        volume,
+        velocity,
+        rvol,
+        participation_pct,
+        recent_change
+    )
 
 def run():
     print("=" * 60)
@@ -210,14 +226,23 @@ def run():
                 price = md["price"]
                 change_pct = md["change_pct"]
 
-                volume, velocity, rvol, recent_change = build_structure(md)
+   (
+    volume,
+    velocity,
+    rvol,
+    participation_pct,
+    recent_change,
+) = build_structure(md)
 
-                signal = classify_signal(
-                    price,
-                    change_pct,
-                    volume,
-                    velocity
-                )
+signal = classify_signal(
+    price=price,
+    change_pct=change_pct,
+    volume=volume,
+    velocity=velocity,
+    rvol=rvol,
+    participation_pct=participation_pct,
+    recent_change=recent_change,
+)
 
                 state = signal.get("state", "UNKNOWN")
 
@@ -232,13 +257,19 @@ def run():
                     continue
 
                 if should_alert(symbol, state):
-                    send_alert(
-                        symbol,
-                        price,
-                        change_pct,
-                        signal
-                    )
-                    print(f"SENT CLEAN: {symbol} - {state}")
+send_alert(
+    symbol=symbol,
+    price=price,
+change_pct=change_pct,
+    signal=signal,
+    rvol=rvol,
+participation_pct=participation_pct,
+)
+print(
+    f"ALERT: {symbol} | "
+    f"{signal['name']} | "
+    f"RVOL {rvol:.2f}"
+)
                 else:
                     print(f"NO DUPLICATE: {symbol} - {state}")
 
