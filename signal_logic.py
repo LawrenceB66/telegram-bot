@@ -149,6 +149,7 @@ def classify_signal(
                     else "Price and participation are improving together."
                 ),
             }
+
         # ==================================================
         # PRESSURE BUILDING — RVOL LED
         # ==================================================
@@ -203,7 +204,7 @@ def classify_signal(
             "driver": None,
         }
 
-        except Exception as e:
+    except Exception as e:
         print(f"Signal logic error: {e}")
 
         return {
