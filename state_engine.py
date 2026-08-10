@@ -28,6 +28,11 @@ def save_state(state):
         print(f"State save error: {e}")
 
 
+def get_previous_state(symbol):
+    state = load_state()
+    return state.get(symbol)
+
+
 def should_alert(symbol, new_state):
     state = load_state()
 
