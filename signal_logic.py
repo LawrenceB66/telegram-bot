@@ -10,7 +10,6 @@ def classify_signal(
 ):
     try:
         change_pct = float(change_pct)
-
         volume = str(volume).upper()
         velocity = str(velocity).upper()
 
