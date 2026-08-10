@@ -155,12 +155,12 @@ def classify_signal(
 
         if (
             abs(change_pct) < 5
-            and rvol >= 1.90
-            and v_rank >= 1
+            and rvol >= 2.25
+            and v_rank >= 2
             and recent_change >= 0
         ):
             return {
-                "emoji": "🔥",
+                "emoji": "💣",
                 "name": "Pressure Building",
                 "state": "BUILDING",
                 "volume": volume.title(),
