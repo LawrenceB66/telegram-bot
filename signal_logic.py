@@ -155,7 +155,7 @@ def classify_signal(
 
         if (
             abs(change_pct) < 5
-            and rvol >= 1.50
+            and rvol >= 1.90
             and v_rank >= 1
             and recent_change >= 0
         ):
