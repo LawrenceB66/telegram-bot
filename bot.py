@@ -6,7 +6,7 @@ import requests
 from watchlist import TICKERS
 from signal_logic import classify_signal
 from send_alert import send_alert
-from state_engine import should_alert
+from state_engine import should_alert, get_previous_state
 
 API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
 
@@ -233,12 +233,14 @@ def run():
                     participation_pct,
                     recent_change,
                 ) = build_structure(md)
-
+                
+                previous_state = get_previous_state(symbol)
                 signal = classify_signal(
                     price=price,
                     change_pct=change_pct,
                     volume=volume,
-                    velocity=velocity,
+                    velocity=velocity,      
+                previous_state=previous_state,
                     rvol=rvol,
                     participation_pct=participation_pct,
                     recent_change=recent_change,
