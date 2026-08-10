@@ -8,6 +8,7 @@ from signal_logic import classify_signal
 from send_alert import send_alert
 from state_engine import should_alert, get_previous_state
 
+
 API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
 
 print("API_KEY repr:", repr(API_KEY))
@@ -27,17 +28,29 @@ else:
 
 print("=" * 60)
 
+
 CHECK_INTERVAL = 30
 INTRADAY_INTERVAL = "5min"
+
+# Same-time volume comparison
+SAME_TIME_LOOKBACK_SESSIONS = 10
+MIN_COMPARABLE_SESSIONS = 5
 
 
 def get_json(url, label):
     try:
         response = requests.get(url, timeout=10)
+
         if response.status_code != 200:
-            print(f"{label} HTTP ERROR:", response.status_code, response.text[:200])
+            print(
+                f"{label} HTTP ERROR:",
+                response.status_code,
+                response.text[:200]
+            )
             return None
+
         return response.json()
+
     except Exception as e:
         print(f"{label} REQUEST ERROR:", e)
         return None
@@ -49,41 +62,81 @@ def get_market_data(symbol):
             print("ERROR: ALPHA_VANTAGE_API_KEY not found")
             return None
 
+        # ==================================================
+        # REAL-TIME QUOTE
+        # ==================================================
+
         quote_url = (
             f"https://www.alphavantage.co/query"
             f"?function=GLOBAL_QUOTE"
             f"&symbol={symbol}"
             f"&entitlement=realtime"
             f"&apikey={API_KEY}"
-
         )
 
-        quote = get_json(quote_url, f"{symbol} QUOTE")
+        quote = get_json(
+            quote_url,
+            f"{symbol} QUOTE"
+        )
+
         if not quote:
             return None
 
         if "Note" in quote:
-            print(f"{symbol} ALPHA LIMIT:", quote["Note"])
+            print(
+                f"{symbol} ALPHA LIMIT:",
+                quote["Note"]
+            )
             return None
 
         if "Information" in quote:
-            print(f"{symbol} ALPHA INFO:", quote["Information"])
+            print(
+                f"{symbol} ALPHA INFO:",
+                quote["Information"]
+            )
             return None
 
         if "Error Message" in quote:
-            print(f"{symbol} ALPHA ERROR:", quote["Error Message"])
+            print(
+                f"{symbol} ALPHA ERROR:",
+                quote["Error Message"]
+            )
             return None
 
-        global_quote = quote.get("Global Quote", {})
+        global_quote = quote.get(
+            "Global Quote",
+            {}
+        )
 
-        price = float(global_quote.get("05. price", 0))
-        prev_close = float(global_quote.get("08. previous close", 0))
+        price = float(
+            global_quote.get(
+                "05. price",
+                0
+            )
+        )
+
+        prev_close = float(
+            global_quote.get(
+                "08. previous close",
+                0
+            )
+        )
 
         if price == 0 or prev_close == 0:
-            print(f"{symbol} QUOTE BAD:", quote)
+            print(
+                f"{symbol} QUOTE BAD:",
+                quote
+            )
             return None
 
-        change_pct = ((price - prev_close) / prev_close) * 100
+        change_pct = (
+            (price - prev_close)
+            / prev_close
+        ) * 100
+
+        # ==================================================
+        # INTRADAY HISTORY
+        # ==================================================
 
         candle_url = (
             f"https://www.alphavantage.co/query"
@@ -93,90 +146,230 @@ def get_market_data(symbol):
             f"&outputsize=full"
             f"&entitlement=realtime"
             f"&apikey={API_KEY}"
-        
         )
 
-        candles = get_json(candle_url, f"{symbol} INTRADAY")
+        candles = get_json(
+            candle_url,
+            f"{symbol} INTRADAY"
+        )
+
         if not candles:
             return None
 
         if "Note" in candles:
-            print(f"{symbol} ALPHA LIMIT:", candles["Note"])
+            print(
+                f"{symbol} ALPHA LIMIT:",
+                candles["Note"]
+            )
             return None
 
         if "Information" in candles:
-            print(f"{symbol} ALPHA INFO:", candles["Information"])
+            print(
+                f"{symbol} ALPHA INFO:",
+                candles["Information"]
+            )
             return None
 
         if "Error Message" in candles:
-            print(f"{symbol} ALPHA ERROR:", candles["Error Message"])
+            print(
+                f"{symbol} ALPHA ERROR:",
+                candles["Error Message"]
+            )
             return None
 
-        series = candles.get(f"Time Series ({INTRADAY_INTERVAL})")
+        series = candles.get(
+            f"Time Series ({INTRADAY_INTERVAL})"
+        )
+
         if not series:
-            print(f"{symbol} INTRADAY BAD:", candles)
+            print(
+                f"{symbol} INTRADAY BAD:",
+                candles
+            )
             return None
 
-        closes = []
-        volumes = []
+        # ==================================================
+        # BUILD ORDERED BAR HISTORY
+        # ==================================================
+
+        bars = []
 
         for timestamp in sorted(series.keys()):
             bar = series[timestamp]
 
-            close = float(bar.get("4. close", 0))
-            volume = float(bar.get("5. volume", 0))
+            close = float(
+                bar.get(
+                    "4. close",
+                    0
+                )
+            )
+
+            volume = float(
+                bar.get(
+                    "5. volume",
+                    0
+                )
+            )
 
             if close > 0 and volume > 0:
-                closes.append(close)
-                volumes.append(volume)
+                bars.append(
+                    {
+                        "timestamp": timestamp,
+                        "close": close,
+                        "volume": volume,
+                    }
+                )
 
         print(
             f"{symbol} DATA CHECK | "
-            f"BARS: {len(closes)} | "
-            f"VOLUMES: {len(volumes)}"
+            f"BARS: {len(bars)} | "
+            f"VOLUMES: {len(bars)}"
         )
 
-        if len(closes) < 5:
-            print(f"{symbol} INSUFFICIENT INTRADAY DATA:", len(closes))
+        if len(bars) < 5:
+            print(
+                f"{symbol} INSUFFICIENT INTRADAY DATA:",
+                len(bars)
+            )
             return None
 
         return {
             "price": price,
             "change_pct": change_pct,
-            "closes": closes,
-            "volumes": volumes,
+            "bars": bars,
         }
 
     except Exception as e:
-        print(f"Error fetching {symbol}: {e}")
+        print(
+            f"Error fetching {symbol}: {e}"
+        )
         return None
 
+
 def build_structure(market_data):
+
     change_pct = market_data["change_pct"]
-    closes = market_data["closes"]
-    volumes = market_data["volumes"]
+    bars = market_data["bars"]
 
-    current_volume = volumes[-1]
-    prior = volumes[:-21:-1]
-    average_volume = sum(prior) / max(len(prior), 1)
+    # ==================================================
+    # CURRENT BAR
+    # ==================================================
 
-    rvol = (
-        0
-        if average_volume == 0
-        else current_volume / average_volume
-    )
+    current_bar = bars[-1]
 
-    participation_pct = (
-        0
-        if average_volume == 0
-        else ((current_volume - average_volume) / average_volume) * 100
-    )
+    current_timestamp = current_bar["timestamp"]
+    current_volume = current_bar["volume"]
+
+    current_date = current_timestamp.split(" ")[0]
+    current_time = current_timestamp.split(" ")[1][:5]
+
+    # ==================================================
+    # SAME-TIME HISTORICAL VOLUME
+    #
+    # Compare today's current 5-minute slot against
+    # the identical clock-time slot from prior sessions.
+    #
+    # Example:
+    #
+    # Today's 15:30 bar
+    #       versus
+    # previous sessions' 15:30 bars
+    #
+    # This prevents normal opening/closing volume patterns
+    # from being mistaken for abnormal participation.
+    # ==================================================
+
+    comparable_volumes = []
+    used_dates = set()
+
+    for bar in reversed(bars[:-1]):
+
+        timestamp = bar["timestamp"]
+
+        bar_date = timestamp.split(" ")[0]
+        bar_time = timestamp.split(" ")[1][:5]
+
+        if bar_date == current_date:
+            continue
+
+        if bar_time != current_time:
+            continue
+
+        if bar_date in used_dates:
+            continue
+
+        comparable_volumes.append(
+            bar["volume"]
+        )
+
+        used_dates.add(bar_date)
+
+        if (
+            len(comparable_volumes)
+            >= SAME_TIME_LOOKBACK_SESSIONS
+        ):
+            break
+
+    # ==================================================
+    # FAIL CLOSED IF HISTORY IS INSUFFICIENT
+    # ==================================================
+
+    if (
+        len(comparable_volumes)
+        < MIN_COMPARABLE_SESSIONS
+    ):
+        average_volume = 0
+        rvol = 0
+        participation_pct = 0
+
+    else:
+        average_volume = (
+            sum(comparable_volumes)
+            / len(comparable_volumes)
+        )
+
+        rvol = (
+            0
+            if average_volume == 0
+            else current_volume / average_volume
+        )
+
+        participation_pct = (
+            0
+            if average_volume == 0
+            else (
+                (
+                    current_volume
+                    - average_volume
+                )
+                / average_volume
+            ) * 100
+        )
+
+    # ==================================================
+    # RECENT PRICE MOVEMENT
+    # ==================================================
+
+    closes = [
+        bar["close"]
+        for bar in bars
+    ]
 
     recent_change = (
         0
         if closes[-4] == 0
-        else ((closes[-1] - closes[-4]) / closes[-4]) * 100
+        else (
+            (
+                closes[-1]
+                - closes[-4]
+            )
+            / closes[-4]
+        ) * 100
     )
+
+    # ==================================================
+    # VOLUME CLASSIFICATION
+    # ==================================================
 
     volume = (
         "EXTREME" if rvol >= 3 else
@@ -186,18 +379,31 @@ def build_structure(market_data):
         "NORMAL"
     )
 
-    if change_pct >= 10 and recent_change <= 0:
+    # ==================================================
+    # VELOCITY CLASSIFICATION
+    # ==================================================
+
+    if (
+        change_pct >= 10
+        and recent_change <= 0
+    ):
         velocity = "STALLING"
+
     elif recent_change >= 1:
         velocity = "EXTREME"
+
     elif recent_change >= 0.5:
         velocity = "ACCELERATING"
+
     elif recent_change >= 0.2:
         velocity = "HIGH"
+
     elif recent_change <= -0.5:
         velocity = "REVERSING"
+
     elif recent_change >= 0:
         velocity = "BUILDING"
+
     else:
         velocity = "MODERATE"
 
@@ -206,21 +412,29 @@ def build_structure(market_data):
         velocity,
         rvol,
         participation_pct,
-        recent_change
+        recent_change,
     )
 
+
 def run():
+
     print("=" * 60)
     print("IAL ENGINE LIVE — ALPHA VANTAGE TEST")
     print("=" * 60)
 
     while True:
+
         for symbol in TICKERS:
+
             try:
-                md = get_market_data(symbol)
+                md = get_market_data(
+                    symbol
+                )
 
                 if not md:
-                    print(f"SKIPPING {symbol} — bad data")
+                    print(
+                        f"SKIPPING {symbol} — bad data"
+                    )
                     continue
 
                 price = md["price"]
@@ -233,32 +447,43 @@ def run():
                     participation_pct,
                     recent_change,
                 ) = build_structure(md)
-                
-                previous_state = get_previous_state(symbol)
+
+                previous_state = (
+                    get_previous_state(symbol)
+                )
+
                 signal = classify_signal(
                     price=price,
                     change_pct=change_pct,
                     volume=volume,
-                    velocity=velocity,      
-                previous_state=previous_state,
+                    velocity=velocity,
+                    previous_state=previous_state,
                     rvol=rvol,
                     participation_pct=participation_pct,
                     recent_change=recent_change,
                 )
 
-                state = signal.get("state", "UNKNOWN")
+                state = signal.get(
+                    "state",
+                    "UNKNOWN"
+                )
 
                 if state == "BASELINE":
                     print(
                         f"BASELINE: {symbol} | "
                         f"{round(change_pct, 2)}% | "
                         f"RVOL {round(rvol, 2)} | "
-                        f"RECENT {round(recent_change, 2)}% | "
+                        f"RECENT "
+                        f"{round(recent_change, 2)}% | "
                         f"{volume}/{velocity}"
                     )
                     continue
 
-                if should_alert(symbol, state):
+                if should_alert(
+                    symbol,
+                    state
+                ):
+
                     send_alert(
                         symbol=symbol,
                         price=price,
@@ -275,12 +500,20 @@ def run():
                     )
 
                 else:
-                    print(f"NO DUPLICATE: {symbol} - {state}")
+                    print(
+                        f"NO DUPLICATE: "
+                        f"{symbol} - {state}"
+                    )
 
             except Exception as e:
-                print(f"Error with {symbol}: {e}")
+                print(
+                    f"Error with {symbol}: {e}"
+                )
 
-        time.sleep(CHECK_INTERVAL)
-            
+        time.sleep(
+            CHECK_INTERVAL
+        )
+
+
 if __name__ == "__main__":
     run()
