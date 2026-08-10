@@ -82,7 +82,7 @@ TICKERS = [
     "TKO", "TLT", "TM", "TMO", "TMUS", "TPR", "TRGP", "TRV", "TSLA", "TSM",
     "TT", "TTWO", "TWST", "TXN", "TXT",
 
-    "UAL", "UBER", "UMC", "UNH", "UNM", "UNP", "UPS", "URI", "USB", "UVXY",
+    "UAL", "UBER", "UMC", "UNH", "UNM", "UNP", "UPS", "URI", "USB", "USO", "UVXY",
 
     "V", "VECO", "VEEV", "VERV", "VICI", "VIXY", "VLO", "VMC", "VOO", "VRSN",
     "VRNS", "VRT", "VST", "VTR", "VRTX", "VZ",
