@@ -6,23 +6,36 @@ def classify_signal(
     previous_state=None,
     rvol=None,
     participation_pct=None,
-    recent_change=None
+    recent_change=None,
+    price_activity_ratio=None
 ):
     try:
         change_pct = float(change_pct)
         volume = str(volume).upper()
         velocity = str(velocity).upper()
 
-        rvol = 0 if rvol is None else float(rvol)
+        rvol = (
+            0
+            if rvol is None
+            else float(rvol)
+        )
 
         participation_pct = (
-            0 if participation_pct is None
+            0
+            if participation_pct is None
             else float(participation_pct)
         )
 
         recent_change = (
-            0 if recent_change is None
+            0
+            if recent_change is None
             else float(recent_change)
+        )
+
+        price_activity_ratio = (
+            0
+            if price_activity_ratio is None
+            else float(price_activity_ratio)
         )
 
         # --------------------------------------------------
@@ -49,22 +62,36 @@ def classify_signal(
             "EXTREME": 3,
         }
 
-        v_rank = volume_rank.get(volume, 0)
-        vel_rank = velocity_rank.get(velocity, 0)
+        v_rank = volume_rank.get(
+            volume,
+            0
+        )
+
+        vel_rank = velocity_rank.get(
+            velocity,
+            0
+        )
 
         # ==================================================
         # EXHAUSTION
         #
-        # Extended price structure remains elevated,
-        # but short-term price movement is stalling.
+        # Previously extended structure remains elevated,
+        # but immediate price velocity has stalled.
         # ==================================================
 
         if (
-            previous_state in ["LOADED", "EXTENDED"]
+            previous_state in [
+                "LOADED",
+                "EXTENDED"
+            ]
             and change_pct >= 10
-            and rvol >= 2.00
-            and v_rank >= 2
-            and velocity in ["STALLING", "SLOWING"]
+            and rvol >= 2.50
+            and v_rank >= 3
+            and price_activity_ratio >= 1.50
+            and velocity in [
+                "STALLING",
+                "SLOWING"
+            ]
         ):
             return {
                 "emoji": "⚠️",
@@ -74,21 +101,22 @@ def classify_signal(
                 "driver": "Price Extension",
                 "read": (
                     "Price remains extended while "
-                    "participation begins slowing."
+                    "immediate momentum begins slowing."
                 ),
             }
 
         # ==================================================
         # MOMENTUM SURGE
         #
-        # Price extension + materially unusual
-        # cumulative participation.
+        # Participation and normalized price activity
+        # are both materially elevated.
         # ==================================================
 
         if (
             change_pct >= 10
             and rvol >= 2.50
             and v_rank >= 3
+            and price_activity_ratio >= 1.50
             and vel_rank >= 2
         ):
             return {
@@ -98,22 +126,20 @@ def classify_signal(
                 "volume": volume.title(),
                 "driver": "Price + Participation",
                 "read": (
-                    "Price and participation are "
-                    "accelerating together."
+                    "Price activity and participation "
+                    "are expanding together."
                 ),
             }
 
         # ==================================================
         # ACTIVE EXPANSION — STRONG
-        #
-        # Strong price expansion accompanied by
-        # at least 2.0x cumulative RVOL.
         # ==================================================
 
         if (
             change_pct >= 7
             and rvol >= 2.00
             and v_rank >= 2
+            and price_activity_ratio >= 1.25
             and vel_rank >= 2
         ):
             return {
@@ -127,23 +153,24 @@ def classify_signal(
                     else "Price Led"
                 ),
                 "read": (
-                    "Price and participation continue expanding."
+                    "Price activity and participation "
+                    "continue expanding."
                     if participation_pct >= 50
-                    else "Price is advancing faster than participation."
+                    else
+                    "Price activity is advancing faster "
+                    "than participation."
                 ),
             }
 
         # ==================================================
         # ACTIVE EXPANSION — BUILDING
-        #
-        # Price expansion accompanied by meaningfully
-        # elevated cumulative participation.
         # ==================================================
 
         if (
             change_pct >= 5
             and rvol >= 1.50
             and v_rank >= 1
+            and price_activity_ratio >= 1.00
             and vel_rank >= 1
         ):
             return {
@@ -157,23 +184,27 @@ def classify_signal(
                     else "Balanced Expansion"
                 ),
                 "read": (
-                    "Participation is building ahead of price."
+                    "Participation is building alongside "
+                    "expanding price activity."
                     if participation_pct >= 50
-                    else "Price and participation are improving together."
+                    else
+                    "Price activity and participation "
+                    "are improving together."
                 ),
             }
 
         # ==================================================
-        # PRESSURE BUILDING — RVOL LED
+        # PRESSURE BUILDING
         #
-        # Price remains contained while cumulative
-        # participation reaches at least 1.5x normal.
+        # Participation is extreme while normalized price
+        # activity remains contained relative to history.
         # ==================================================
 
         if (
             abs(change_pct) < 5
-            and rvol >= 1.50
-            and v_rank >= 1
+            and rvol >= 3.00
+            and v_rank >= 4
+            and 0 < price_activity_ratio <= 1.00
             and recent_change >= 0
         ):
             return {
@@ -184,33 +215,38 @@ def classify_signal(
                 "driver": "Participation",
                 "read": (
                     "Participation is elevated while "
-                    "price remains contained."
+                    "price activity remains contained."
                 ),
             }
 
         # ==================================================
         # BREAKDOWN
-        #
-        # Previously elevated structure begins reversing
-        # while participation remains meaningfully elevated.
         # ==================================================
 
         if (
-            previous_state in ["BUILDING", "LOADED", "EXTENDED"]
+            previous_state in [
+                "BUILDING",
+                "LOADED",
+                "EXTENDED"
+            ]
             and change_pct < 2
             and rvol >= 1.50
             and v_rank >= 1
-            and velocity in ["REVERSING", "NEGATIVE"]
+            and price_activity_ratio >= 1.00
+            and velocity in [
+                "REVERSING",
+                "NEGATIVE"
+            ]
         ):
             return {
                 "emoji": "🔻",
                 "name": "Breakdown",
                 "state": "FAILURE",
                 "volume": volume.title(),
-                "driver": "Participation Fade",
+                "driver": "Price Reversal",
                 "read": (
-                    "Participation is weakening as "
-                    "price loses momentum."
+                    "Price activity is expanding lower "
+                    "while participation remains elevated."
                 ),
             }
 
@@ -225,7 +261,9 @@ def classify_signal(
         }
 
     except Exception as e:
-        print(f"Signal logic error: {e}")
+        print(
+            f"Signal logic error: {e}"
+        )
 
         return {
             "state": "ERROR",
