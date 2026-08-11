@@ -32,9 +32,16 @@ print("=" * 60)
 CHECK_INTERVAL = 30
 INTRADAY_INTERVAL = "5min"
 
-# Same-time volume comparison
-SAME_TIME_LOOKBACK_SESSIONS = 10
-MIN_COMPARABLE_SESSIONS = 5
+# ==================================================
+# IAL INTRADAY RVOL STANDARD
+#
+# Current cumulative regular-session volume
+# divided by average cumulative volume through
+# the same time across the prior 20 sessions.
+# ==================================================
+
+RVOL_LOOKBACK_SESSIONS = 20
+MIN_COMPARABLE_SESSIONS = 20
 
 
 def get_json(url, label):
@@ -136,6 +143,9 @@ def get_market_data(symbol):
 
         # ==================================================
         # INTRADAY HISTORY
+        #
+        # Regular trading session only.
+        # 9:30 AM - 4:00 PM Eastern.
         # ==================================================
 
         candle_url = (
@@ -144,6 +154,7 @@ def get_market_data(symbol):
             f"&symbol={symbol}"
             f"&interval={INTRADAY_INTERVAL}"
             f"&outputsize=full"
+            f"&extended_hours=false"
             f"&entitlement=realtime"
             f"&apikey={API_KEY}"
         )
@@ -252,99 +263,149 @@ def build_structure(market_data):
     bars = market_data["bars"]
 
     # ==================================================
-    # CURRENT BAR
+    # CURRENT SESSION / CURRENT TIME
     # ==================================================
 
     current_bar = bars[-1]
 
     current_timestamp = current_bar["timestamp"]
-    current_volume = current_bar["volume"]
 
     current_date = current_timestamp.split(" ")[0]
     current_time = current_timestamp.split(" ")[1][:5]
 
     # ==================================================
-    # SAME-TIME HISTORICAL VOLUME
-    #
-    # Compare today's current 5-minute slot against
-    # the identical clock-time slot from prior sessions.
-    #
-    # Example:
-    #
-    # Today's 15:30 bar
-    #       versus
-    # previous sessions' 15:30 bars
-    #
-    # This prevents normal opening/closing volume patterns
-    # from being mistaken for abnormal participation.
+    # GROUP BARS BY TRADING SESSION
     # ==================================================
 
-    comparable_volumes = []
-    used_dates = set()
+    sessions = {}
 
-    for bar in reversed(bars[:-1]):
+    for bar in bars:
 
         timestamp = bar["timestamp"]
 
         bar_date = timestamp.split(" ")[0]
         bar_time = timestamp.split(" ")[1][:5]
 
-        if bar_date == current_date:
-            continue
+        if bar_date not in sessions:
+            sessions[bar_date] = []
 
-        if bar_time != current_time:
-            continue
-
-        if bar_date in used_dates:
-            continue
-
-        comparable_volumes.append(
-            bar["volume"]
+        sessions[bar_date].append(
+            {
+                "time": bar_time,
+                "volume": bar["volume"],
+            }
         )
 
-        used_dates.add(bar_date)
+    # ==================================================
+    # CURRENT CUMULATIVE SESSION VOLUME
+    #
+    # Sum today's regular-session volume from the open
+    # through the latest available 5-minute time slot.
+    # ==================================================
+
+    current_cumulative_volume = 0
+
+    for bar in sessions.get(current_date, []):
+
+        if bar["time"] <= current_time:
+            current_cumulative_volume += bar["volume"]
+
+    # ==================================================
+    # HISTORICAL CUMULATIVE SAME-TIME BASELINE
+    #
+    # For each prior trading session:
+    #
+    # Sum volume from the regular-session open
+    # through the same clock time as today.
+    #
+    # Then average those cumulative totals across
+    # the prior 20 trading sessions.
+    # ==================================================
+
+    historical_session_dates = sorted(
+        [
+            session_date
+            for session_date in sessions.keys()
+            if session_date < current_date
+        ],
+        reverse=True
+    )
+
+    historical_cumulative_volumes = []
+
+    for session_date in historical_session_dates:
+
+        cumulative_volume = 0
+
+        for bar in sessions[session_date]:
+
+            if bar["time"] <= current_time:
+                cumulative_volume += bar["volume"]
+
+        if cumulative_volume > 0:
+
+            historical_cumulative_volumes.append(
+                cumulative_volume
+            )
 
         if (
-            len(comparable_volumes)
-            >= SAME_TIME_LOOKBACK_SESSIONS
+            len(historical_cumulative_volumes)
+            >= RVOL_LOOKBACK_SESSIONS
         ):
             break
 
     # ==================================================
-    # FAIL CLOSED IF HISTORY IS INSUFFICIENT
+    # FAIL CLOSED IF 20 PRIOR SESSIONS ARE UNAVAILABLE
     # ==================================================
 
+    comparable_sessions = len(
+        historical_cumulative_volumes
+    )
+
     if (
-        len(comparable_volumes)
+        comparable_sessions
         < MIN_COMPARABLE_SESSIONS
     ):
-        average_volume = 0
+
+        average_cumulative_volume = 0
         rvol = 0
         participation_pct = 0
 
     else:
-        average_volume = (
-            sum(comparable_volumes)
-            / len(comparable_volumes)
+
+        average_cumulative_volume = (
+            sum(historical_cumulative_volumes)
+            / comparable_sessions
         )
 
         rvol = (
             0
-            if average_volume == 0
-            else current_volume / average_volume
+            if average_cumulative_volume == 0
+            else (
+                current_cumulative_volume
+                / average_cumulative_volume
+            )
         )
 
         participation_pct = (
-            0
-            if average_volume == 0
-            else (
-                (
-                    current_volume
-                    - average_volume
-                )
-                / average_volume
-            ) * 100
+            (rvol - 1) * 100
+            if rvol > 0
+            else 0
         )
+
+    # ==================================================
+    # RVOL VALIDATION LOG
+    # ==================================================
+
+    print(
+        f"RVOL CHECK | "
+        f"TIME {current_time} | "
+        f"CURRENT CUM {int(current_cumulative_volume)} | "
+        f"AVG{comparable_sessions} "
+        f"{int(average_cumulative_volume)} | "
+        f"RVOL {rvol:.2f} | "
+        f"PART {participation_pct:+.0f}%"
+    )
 
     # ==================================================
     # RECENT PRICE MOVEMENT
