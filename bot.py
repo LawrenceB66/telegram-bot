@@ -1,5 +1,6 @@
 import os
 import time
+from datetime import datetime
 
 import requests
 
@@ -33,20 +34,36 @@ CHECK_INTERVAL = 30
 INTRADAY_INTERVAL = "5min"
 
 # ==================================================
-# IAL INTRADAY RVOL STANDARD
+# IAL COMPOSITE RVOL STANDARD
 #
-# Current cumulative regular-session volume
-# divided by average cumulative volume through
-# the same time across the prior 20 sessions.
+# Four cumulative same-time historical baselines:
+#
+# 20 sessions
+# 60 sessions
+# 90 sessions
+# 120 sessions
+#
+# The four baseline averages are themselves averaged
+# into one composite volume baseline.
 # ==================================================
 
-RVOL_LOOKBACK_SESSIONS = 20
-MIN_COMPARABLE_SESSIONS = 20
+RVOL_LOOKBACKS = (20, 60, 90, 120)
+MAX_RVOL_LOOKBACK = 120
+
+# Alpha Vantage's normal full intraday response
+# supplies the most recent 30 days. Historical month
+# slices are loaded only as needed and cached.
+MAX_HISTORICAL_MONTHS = 8
+
+HISTORICAL_BAR_CACHE = {}
 
 
 def get_json(url, label):
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(
+            url,
+            timeout=10
+        )
 
         if response.status_code != 200:
             print(
@@ -59,14 +76,252 @@ def get_json(url, label):
         return response.json()
 
     except Exception as e:
-        print(f"{label} REQUEST ERROR:", e)
+        print(
+            f"{label} REQUEST ERROR:",
+            e
+        )
         return None
+
+
+def parse_intraday_series(series):
+    bars = []
+
+    for timestamp in sorted(series.keys()):
+        bar = series[timestamp]
+
+        close = float(
+            bar.get(
+                "4. close",
+                0
+            )
+        )
+
+        volume = float(
+            bar.get(
+                "5. volume",
+                0
+            )
+        )
+
+        if close > 0 and volume > 0:
+            bars.append(
+                {
+                    "timestamp": timestamp,
+                    "close": close,
+                    "volume": volume,
+                }
+            )
+
+    return bars
+
+
+def merge_bars(*bar_groups):
+    merged = {}
+
+    for bars in bar_groups:
+        for bar in bars:
+            merged[bar["timestamp"]] = bar
+
+    return [
+        merged[timestamp]
+        for timestamp in sorted(merged.keys())
+    ]
+
+
+def get_month_string(timestamp, months_back):
+    dt = datetime.strptime(
+        timestamp,
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+    total_months = (
+        dt.year * 12
+        + (dt.month - 1)
+        - months_back
+    )
+
+    year = total_months // 12
+    month = (total_months % 12) + 1
+
+    return f"{year:04d}-{month:02d}"
+
+
+def count_prior_sessions(
+    bars,
+    current_date
+):
+    dates = {
+        bar["timestamp"].split(" ")[0]
+        for bar in bars
+        if (
+            bar["timestamp"].split(" ")[0]
+            < current_date
+        )
+    }
+
+    return len(dates)
+
+
+def get_historical_intraday(
+    symbol,
+    latest_timestamp,
+    current_bars
+):
+    current_date = (
+        latest_timestamp.split(" ")[0]
+    )
+
+    cached_bars = HISTORICAL_BAR_CACHE.get(
+        symbol,
+        []
+    )
+
+    # Keep adding the latest rolling intraday bars
+    # to the cache as the engine runs.
+    cached_bars = merge_bars(
+        cached_bars,
+        current_bars
+    )
+
+    prior_sessions = count_prior_sessions(
+        cached_bars,
+        current_date
+    )
+
+    # ==================================================
+    # HISTORICAL WARMUP
+    #
+    # Pull earlier calendar months only until we have
+    # at least 120 unique prior trading sessions.
+    #
+    # Alpha Vantage supports historical intraday
+    # month slices through month=YYYY-MM.
+    # ==================================================
+
+    if prior_sessions < MAX_RVOL_LOOKBACK:
+
+        print(
+            f"{symbol} RVOL HISTORY WARMUP | "
+            f"CURRENT SESSIONS: {prior_sessions}"
+        )
+
+        for months_back in range(
+            1,
+            MAX_HISTORICAL_MONTHS + 1
+        ):
+            month = get_month_string(
+                latest_timestamp,
+                months_back
+            )
+
+            month_url = (
+                f"https://www.alphavantage.co/query"
+                f"?function=TIME_SERIES_INTRADAY"
+                f"&symbol={symbol}"
+                f"&interval={INTRADAY_INTERVAL}"
+                f"&month={month}"
+                f"&outputsize=full"
+                f"&extended_hours=false"
+                f"&apikey={API_KEY}"
+            )
+
+            month_data = get_json(
+                month_url,
+                f"{symbol} HISTORY {month}"
+            )
+
+            if not month_data:
+                continue
+
+            if "Note" in month_data:
+                print(
+                    f"{symbol} ALPHA LIMIT "
+                    f"{month}:",
+                    month_data["Note"]
+                )
+                continue
+
+            if "Information" in month_data:
+                print(
+                    f"{symbol} ALPHA INFO "
+                    f"{month}:",
+                    month_data["Information"]
+                )
+                continue
+
+            if "Error Message" in month_data:
+                print(
+                    f"{symbol} ALPHA ERROR "
+                    f"{month}:",
+                    month_data["Error Message"]
+                )
+                continue
+
+            month_series = month_data.get(
+                f"Time Series "
+                f"({INTRADAY_INTERVAL})"
+            )
+
+            if not month_series:
+                print(
+                    f"{symbol} HISTORY BAD | "
+                    f"{month}"
+                )
+                continue
+
+            month_bars = parse_intraday_series(
+                month_series
+            )
+
+            cached_bars = merge_bars(
+                cached_bars,
+                month_bars
+            )
+
+            prior_sessions = (
+                count_prior_sessions(
+                    cached_bars,
+                    current_date
+                )
+            )
+
+            print(
+                f"{symbol} HISTORY {month} | "
+                f"PRIOR SESSIONS: "
+                f"{prior_sessions}"
+            )
+
+            if (
+                prior_sessions
+                >= MAX_RVOL_LOOKBACK
+            ):
+                break
+
+    HISTORICAL_BAR_CACHE[symbol] = (
+        cached_bars
+    )
+
+    final_sessions = count_prior_sessions(
+        cached_bars,
+        current_date
+    )
+
+    print(
+        f"{symbol} RVOL HISTORY READY | "
+        f"PRIOR SESSIONS: "
+        f"{final_sessions}"
+    )
+
+    return cached_bars
 
 
 def get_market_data(symbol):
     try:
         if not API_KEY:
-            print("ERROR: ALPHA_VANTAGE_API_KEY not found")
+            print(
+                "ERROR: "
+                "ALPHA_VANTAGE_API_KEY not found"
+            )
             return None
 
         # ==================================================
@@ -129,7 +384,10 @@ def get_market_data(symbol):
             )
         )
 
-        if price == 0 or prev_close == 0:
+        if (
+            price == 0
+            or prev_close == 0
+        ):
             print(
                 f"{symbol} QUOTE BAD:",
                 quote
@@ -142,9 +400,9 @@ def get_market_data(symbol):
         ) * 100
 
         # ==================================================
-        # INTRADAY HISTORY
+        # CURRENT INTRADAY HISTORY
         #
-        # Regular trading session only.
+        # Regular session only:
         # 9:30 AM - 4:00 PM Eastern.
         # ==================================================
 
@@ -189,7 +447,8 @@ def get_market_data(symbol):
             return None
 
         series = candles.get(
-            f"Time Series ({INTRADAY_INTERVAL})"
+            f"Time Series "
+            f"({INTRADAY_INTERVAL})"
         )
 
         if not series:
@@ -199,50 +458,37 @@ def get_market_data(symbol):
             )
             return None
 
-        # ==================================================
-        # BUILD ORDERED BAR HISTORY
-        # ==================================================
-
-        bars = []
-
-        for timestamp in sorted(series.keys()):
-            bar = series[timestamp]
-
-            close = float(
-                bar.get(
-                    "4. close",
-                    0
-                )
-            )
-
-            volume = float(
-                bar.get(
-                    "5. volume",
-                    0
-                )
-            )
-
-            if close > 0 and volume > 0:
-                bars.append(
-                    {
-                        "timestamp": timestamp,
-                        "close": close,
-                        "volume": volume,
-                    }
-                )
+        current_bars = (
+            parse_intraday_series(series)
+        )
 
         print(
             f"{symbol} DATA CHECK | "
-            f"BARS: {len(bars)} | "
-            f"VOLUMES: {len(bars)}"
+            f"CURRENT BARS: "
+            f"{len(current_bars)}"
         )
 
-        if len(bars) < 5:
+        if len(current_bars) < 5:
             print(
-                f"{symbol} INSUFFICIENT INTRADAY DATA:",
-                len(bars)
+                f"{symbol} "
+                f"INSUFFICIENT INTRADAY DATA:",
+                len(current_bars)
             )
             return None
+
+        latest_timestamp = (
+            current_bars[-1]["timestamp"]
+        )
+
+        # ==================================================
+        # LOAD / REUSE HISTORICAL INTRADAY CACHE
+        # ==================================================
+
+        bars = get_historical_intraday(
+            symbol=symbol,
+            latest_timestamp=latest_timestamp,
+            current_bars=current_bars,
+        )
 
         return {
             "price": price,
@@ -268,10 +514,18 @@ def build_structure(market_data):
 
     current_bar = bars[-1]
 
-    current_timestamp = current_bar["timestamp"]
+    current_timestamp = (
+        current_bar["timestamp"]
+    )
 
-    current_date = current_timestamp.split(" ")[0]
-    current_time = current_timestamp.split(" ")[1][:5]
+    current_date = (
+        current_timestamp.split(" ")[0]
+    )
+
+    current_time = (
+        current_timestamp
+        .split(" ")[1][:5]
+    )
 
     # ==================================================
     # GROUP BARS BY TRADING SESSION
@@ -283,8 +537,13 @@ def build_structure(market_data):
 
         timestamp = bar["timestamp"]
 
-        bar_date = timestamp.split(" ")[0]
-        bar_time = timestamp.split(" ")[1][:5]
+        bar_date = (
+            timestamp.split(" ")[0]
+        )
+
+        bar_time = (
+            timestamp.split(" ")[1][:5]
+        )
 
         if bar_date not in sessions:
             sessions[bar_date] = []
@@ -298,92 +557,143 @@ def build_structure(market_data):
 
     # ==================================================
     # CURRENT CUMULATIVE SESSION VOLUME
-    #
-    # Sum today's regular-session volume from the open
-    # through the latest available 5-minute time slot.
     # ==================================================
 
     current_cumulative_volume = 0
 
-    for bar in sessions.get(current_date, []):
-
+    for bar in sessions.get(
+        current_date,
+        []
+    ):
         if bar["time"] <= current_time:
-            current_cumulative_volume += bar["volume"]
+            current_cumulative_volume += (
+                bar["volume"]
+            )
 
     # ==================================================
-    # HISTORICAL CUMULATIVE SAME-TIME BASELINE
-    #
-    # For each prior trading session:
-    #
-    # Sum volume from the regular-session open
-    # through the same clock time as today.
-    #
-    # Then average those cumulative totals across
-    # the prior 20 trading sessions.
+    # PRIOR SESSION DATES
     # ==================================================
 
     historical_session_dates = sorted(
         [
             session_date
-            for session_date in sessions.keys()
+            for session_date
+            in sessions.keys()
             if session_date < current_date
         ],
         reverse=True
     )
 
+    # ==================================================
+    # BUILD CUMULATIVE SAME-TIME VOLUME
+    # FOR EACH PRIOR SESSION
+    # ==================================================
+
     historical_cumulative_volumes = []
 
-    for session_date in historical_session_dates:
+    for session_date in (
+        historical_session_dates
+    ):
 
         cumulative_volume = 0
 
         for bar in sessions[session_date]:
 
             if bar["time"] <= current_time:
-                cumulative_volume += bar["volume"]
+                cumulative_volume += (
+                    bar["volume"]
+                )
 
         if cumulative_volume > 0:
-
             historical_cumulative_volumes.append(
                 cumulative_volume
             )
 
-        if (
-            len(historical_cumulative_volumes)
-            >= RVOL_LOOKBACK_SESSIONS
-        ):
-            break
-
     # ==================================================
-    # FAIL CLOSED IF 20 PRIOR SESSIONS ARE UNAVAILABLE
+    # FAIL CLOSED
+    #
+    # A true 20/60/90/120 composite requires
+    # all 120 prior sessions.
     # ==================================================
-
-    comparable_sessions = len(
-        historical_cumulative_volumes
-    )
 
     if (
-        comparable_sessions
-        < MIN_COMPARABLE_SESSIONS
+        len(historical_cumulative_volumes)
+        < MAX_RVOL_LOOKBACK
     ):
 
-        average_cumulative_volume = 0
+        avg_20 = 0
+        avg_60 = 0
+        avg_90 = 0
+        avg_120 = 0
+
+        composite_average = 0
+
         rvol = 0
         participation_pct = 0
 
     else:
 
-        average_cumulative_volume = (
-            sum(historical_cumulative_volumes)
-            / comparable_sessions
+        # Most recent N prior sessions.
+        avg_20 = (
+            sum(
+                historical_cumulative_volumes[
+                    :20
+                ]
+            )
+            / 20
         )
+
+        avg_60 = (
+            sum(
+                historical_cumulative_volumes[
+                    :60
+                ]
+            )
+            / 60
+        )
+
+        avg_90 = (
+            sum(
+                historical_cumulative_volumes[
+                    :90
+                ]
+            )
+            / 90
+        )
+
+        avg_120 = (
+            sum(
+                historical_cumulative_volumes[
+                    :120
+                ]
+            )
+            / 120
+        )
+
+        # ==================================================
+        # IAL COMPOSITE BASELINE
+        #
+        # Equal weighting:
+        #
+        # 20D  = 25%
+        # 60D  = 25%
+        # 90D  = 25%
+        # 120D = 25%
+        # ==================================================
+
+        composite_average = (
+            avg_20
+            + avg_60
+            + avg_90
+            + avg_120
+        ) / 4
 
         rvol = (
             0
-            if average_cumulative_volume == 0
+            if composite_average == 0
             else (
                 current_cumulative_volume
-                / average_cumulative_volume
+                / composite_average
             )
         )
 
@@ -394,17 +704,23 @@ def build_structure(market_data):
         )
 
     # ==================================================
-    # RVOL VALIDATION LOG
+    # COMPOSITE RVOL VALIDATION LOG
     # ==================================================
 
     print(
-        f"RVOL CHECK | "
+        f"COMPOSITE RVOL | "
         f"TIME {current_time} | "
-        f"CURRENT CUM {int(current_cumulative_volume)} | "
-        f"AVG{comparable_sessions} "
-        f"{int(average_cumulative_volume)} | "
+        f"CURRENT "
+        f"{int(current_cumulative_volume)} | "
+        f"20D {int(avg_20)} | "
+        f"60D {int(avg_60)} | "
+        f"90D {int(avg_90)} | "
+        f"120D {int(avg_120)} | "
+        f"COMPOSITE "
+        f"{int(composite_average)} | "
         f"RVOL {rvol:.2f} | "
-        f"PART {participation_pct:+.0f}%"
+        f"PART "
+        f"{participation_pct:+.0f}%"
     )
 
     # ==================================================
@@ -430,6 +746,9 @@ def build_structure(market_data):
 
     # ==================================================
     # VOLUME CLASSIFICATION
+    #
+    # These thresholds now operate on the
+    # COMPOSITE RVOL metric.
     # ==================================================
 
     volume = (
@@ -480,7 +799,10 @@ def build_structure(market_data):
 def run():
 
     print("=" * 60)
-    print("IAL ENGINE LIVE — ALPHA VANTAGE TEST")
+    print(
+        "IAL ENGINE LIVE — "
+        "COMPOSITE RVOL"
+    )
     print("=" * 60)
 
     while True:
@@ -494,12 +816,15 @@ def run():
 
                 if not md:
                     print(
-                        f"SKIPPING {symbol} — bad data"
+                        f"SKIPPING {symbol} — "
+                        f"bad data"
                     )
                     continue
 
                 price = md["price"]
-                change_pct = md["change_pct"]
+                change_pct = (
+                    md["change_pct"]
+                )
 
                 (
                     volume,
@@ -533,10 +858,12 @@ def run():
                     print(
                         f"BASELINE: {symbol} | "
                         f"{round(change_pct, 2)}% | "
-                        f"RVOL {round(rvol, 2)} | "
+                        f"RVOL "
+                        f"{round(rvol, 2)} | "
                         f"RECENT "
                         f"{round(recent_change, 2)}% | "
-                        f"{volume}/{velocity}"
+                        f"{volume}/"
+                        f"{velocity}"
                     )
                     continue
 
@@ -557,7 +884,8 @@ def run():
                     print(
                         f"ALERT: {symbol} | "
                         f"{signal['name']} | "
-                        f"RVOL {rvol:.2f}"
+                        f"COMPOSITE RVOL "
+                        f"{rvol:.2f}"
                     )
 
                 else:
@@ -568,7 +896,8 @@ def run():
 
             except Exception as e:
                 print(
-                    f"Error with {symbol}: {e}"
+                    f"Error with "
+                    f"{symbol}: {e}"
                 )
 
         time.sleep(
