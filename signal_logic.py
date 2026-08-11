@@ -40,12 +40,13 @@ def classify_signal(
         velocity_rank = {
             "NEGATIVE": -2,
             "REVERSING": -1,
+            "SLOWING": -1,
             "MODERATE": 0,
+            "STALLING": 0,
             "BUILDING": 1,
+            "HIGH": 1,
             "ACCELERATING": 2,
             "EXTREME": 3,
-            "STALLING": 0,
-            "SLOWING": -1,
         }
 
         v_rank = volume_rank.get(volume, 0)
@@ -53,12 +54,16 @@ def classify_signal(
 
         # ==================================================
         # EXHAUSTION
+        #
+        # Extended price structure remains elevated,
+        # but short-term price movement is stalling.
         # ==================================================
 
         if (
             previous_state in ["LOADED", "EXTENDED"]
             and change_pct >= 10
-            and v_rank >= 3
+            and rvol >= 2.00
+            and v_rank >= 2
             and velocity in ["STALLING", "SLOWING"]
         ):
             return {
@@ -75,13 +80,16 @@ def classify_signal(
 
         # ==================================================
         # MOMENTUM SURGE
+        #
+        # Price extension + materially unusual
+        # cumulative participation.
         # ==================================================
 
         if (
             change_pct >= 10
+            and rvol >= 2.50
             and v_rank >= 3
             and vel_rank >= 2
-            and rvol >= 1.50
         ):
             return {
                 "emoji": "💥",
@@ -97,13 +105,16 @@ def classify_signal(
 
         # ==================================================
         # ACTIVE EXPANSION — STRONG
+        #
+        # Strong price expansion accompanied by
+        # at least 2.0x cumulative RVOL.
         # ==================================================
 
         if (
             change_pct >= 7
+            and rvol >= 2.00
             and v_rank >= 2
             and vel_rank >= 2
-            and rvol >= 1.00
         ):
             return {
                 "emoji": "⚡",
@@ -124,13 +135,16 @@ def classify_signal(
 
         # ==================================================
         # ACTIVE EXPANSION — BUILDING
+        #
+        # Price expansion accompanied by meaningfully
+        # elevated cumulative participation.
         # ==================================================
 
         if (
             change_pct >= 5
-            and v_rank >= 2
+            and rvol >= 1.50
+            and v_rank >= 1
             and vel_rank >= 1
-            and rvol >= 0.75
         ):
             return {
                 "emoji": "⚡",
@@ -151,12 +165,15 @@ def classify_signal(
 
         # ==================================================
         # PRESSURE BUILDING — RVOL LED
+        #
+        # Price remains contained while cumulative
+        # participation reaches at least 1.5x normal.
         # ==================================================
 
         if (
             abs(change_pct) < 5
-            and rvol >= 3.00
-            and v_rank >= 4
+            and rvol >= 1.50
+            and v_rank >= 1
             and recent_change >= 0
         ):
             return {
@@ -173,11 +190,15 @@ def classify_signal(
 
         # ==================================================
         # BREAKDOWN
+        #
+        # Previously elevated structure begins reversing
+        # while participation remains meaningfully elevated.
         # ==================================================
 
         if (
             previous_state in ["BUILDING", "LOADED", "EXTENDED"]
             and change_pct < 2
+            and rvol >= 1.50
             and v_rank >= 1
             and velocity in ["REVERSING", "NEGATIVE"]
         ):
