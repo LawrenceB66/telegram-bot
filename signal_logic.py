@@ -45,8 +45,8 @@ def classify_signal(
         volume_rank = {
             "NORMAL": 0,
             "ELEVATED": 1,
-            "EXPANDING": 2,
-            "SURGING": 3,
+            "EXPANDED": 2,
+            "SIGNIFICANT EXPANSION": 3,
             "EXTREME": 4,
         }
 
@@ -74,9 +74,6 @@ def classify_signal(
 
         # ==================================================
         # EXHAUSTION
-        #
-        # Previously extended structure remains elevated,
-        # but immediate price velocity has stalled.
         # ==================================================
 
         if (
@@ -107,9 +104,6 @@ def classify_signal(
 
         # ==================================================
         # MOMENTUM SURGE
-        #
-        # Participation and normalized price activity
-        # are both materially elevated.
         # ==================================================
 
         if (
@@ -153,12 +147,8 @@ def classify_signal(
                     else "Price Led"
                 ),
                 "read": (
-                    "Price activity and participation "
-                    "continue expanding."
-                    if participation_pct >= 50
-                    else
-                    "Price activity is advancing faster "
-                    "than participation."
+                    "Price activity is expanding "
+                    "with elevated participation."
                 ),
             }
 
@@ -184,20 +174,13 @@ def classify_signal(
                     else "Balanced Expansion"
                 ),
                 "read": (
-                    "Participation is building alongside "
-                    "expanding price activity."
-                    if participation_pct >= 50
-                    else
-                    "Price activity and participation "
-                    "are improving together."
+                    "Price activity is expanding "
+                    "with elevated participation."
                 ),
             }
 
         # ==================================================
         # PRESSURE BUILDING
-        #
-        # Participation is extreme while normalized price
-        # activity remains contained relative to history.
         # ==================================================
 
         if (
