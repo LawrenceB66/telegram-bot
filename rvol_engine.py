@@ -129,11 +129,21 @@ def calculate_rvol(bars):
             else 0
         )
 
+    # ==================================================
+    # PARTICIPATION CLASSIFICATION
+    #
+    # < 1.50x       NORMAL
+    # 1.50–1.89x    ELEVATED
+    # 1.90–2.49x    EXPANDED
+    # 2.50–2.99x    SIGNIFICANT EXPANSION
+    # 3.00x+        EXTREME
+    # ==================================================
+
     volume = (
-        "EXTREME" if rvol >= 3 else
-        "SURGING" if rvol >= 2.5 else
-        "EXPANDING" if rvol >= 2 else
-        "ELEVATED" if rvol >= 1.5 else
+        "EXTREME" if rvol >= 3.00 else
+        "SIGNIFICANT EXPANSION" if rvol >= 2.50 else
+        "EXPANDED" if rvol >= 1.90 else
+        "ELEVATED" if rvol >= 1.50 else
         "NORMAL"
     )
 
