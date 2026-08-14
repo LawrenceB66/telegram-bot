@@ -8,11 +8,14 @@ from watchlist import TICKERS
 from rvol_engine import calculate_rvol
 from price_engine import calculate_price_activity
 from signal_logic import classify_signal
+from event_memory import reconstruct_event_memory
 from send_alert import send_alert
 from state_engine import (
     should_alert,
     get_previous_state,
+    get_previous_event,
     get_alert_context,
+    seed_event,
 )
 
 
@@ -38,6 +41,11 @@ MIN_HISTORICAL_SESSIONS = 121
 MAX_HISTORICAL_MONTHS = 8
 
 HISTORICAL_BAR_CACHE = {}
+
+# Prevent repeated reconstruction attempts during the same
+# running process. After a redeploy this resets, which is
+# exactly when event history should be reconstructed again.
+EVENT_MEMORY_RECONSTRUCTED = set()
 
 
 def get_json(url, label):
@@ -406,6 +414,57 @@ def get_market_data(symbol):
         return None
 
 
+def ensure_event_memory(symbol, bars):
+    """
+    Reconstruct event history once per symbol when runtime
+    state is absent.
+
+    state_engine.py remains responsible for live state.
+    event_memory.py is used only to recover historical context.
+    """
+
+    if symbol in EVENT_MEMORY_RECONSTRUCTED:
+        return
+
+    EVENT_MEMORY_RECONSTRUCTED.add(symbol)
+
+    if get_previous_event(symbol) is not None:
+        return
+
+    try:
+        reconstructed_event = reconstruct_event_memory(
+            bars=bars,
+            exclude_latest=True,
+        )
+
+        if reconstructed_event:
+            seed_event(
+                symbol,
+                reconstructed_event
+            )
+
+            print(
+                f"EVENT MEMORY RESTORED: {symbol} | "
+                f"STATE "
+                f"{reconstructed_event.get('state')} | "
+                f"COUNT "
+                f"{reconstructed_event.get('alert_count', 1)} | "
+                f"LAST ALERT "
+                f"{reconstructed_event.get('last_alert_price')}"
+            )
+
+        else:
+            print(
+                f"EVENT MEMORY EMPTY: {symbol}"
+            )
+
+    except Exception as e:
+        print(
+            f"EVENT MEMORY ERROR: "
+            f"{symbol} | {e}"
+        )
+
+
 def run():
     print("=" * 60)
     print(
@@ -433,6 +492,19 @@ def run():
                 trading_date = latest_timestamp.split(" ")[0]
                 bars = market_data["bars"]
 
+                # ==================================================
+                # EVENT MEMORY
+                # ==================================================
+
+                ensure_event_memory(
+                    symbol=symbol,
+                    bars=bars,
+                )
+
+                # ==================================================
+                # RVOL ENGINE
+                # ==================================================
+
                 rvol_data = calculate_rvol(
                     bars
                 )
@@ -442,6 +514,10 @@ def run():
                 participation_pct = (
                     rvol_data["participation_pct"]
                 )
+
+                # ==================================================
+                # PRICE ENGINE
+                # ==================================================
 
                 price_data = calculate_price_activity(
                     bars=bars,
@@ -455,6 +531,10 @@ def run():
                 )
                 recent_change = price_data["recent_change"]
                 velocity = price_data["velocity"]
+
+                # ==================================================
+                # STATE + CLASSIFICATION
+                # ==================================================
 
                 previous_state = get_previous_state(
                     symbol
@@ -508,12 +588,15 @@ def run():
                     signal["event_type"] = (
                         alert_context.get("event_type")
                     )
+
                     signal["alert_count"] = (
                         alert_context.get("alert_count", 1)
                     )
+
                     signal["alert_label"] = (
                         alert_context.get("alert_label")
                     )
+
                     signal["continuation_count"] = (
                         alert_context.get(
                             "continuation_count",
