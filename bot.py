@@ -9,14 +9,14 @@ from rvol_engine import calculate_rvol
 from price_engine import calculate_price_activity
 from signal_logic import classify_signal
 from send_alert import send_alert
-from state_engine import should_alert, get_previous_state
+from state_engine import (
+    should_alert,
+    get_previous_state,
+    get_alert_context,
+)
 
 
 API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
-
-print("API_KEY repr:", repr(API_KEY))
-print("API_KEY type:", type(API_KEY))
-print("API_KEY len:", len(API_KEY) if API_KEY is not None else "None")
 
 print("=" * 60)
 print("IAL STARTUP DIAGNOSTICS")
@@ -25,7 +25,6 @@ print("=" * 60)
 if API_KEY:
     print("ALPHA VANTAGE KEY FOUND: YES")
     print("KEY LENGTH:", len(API_KEY))
-    print(f"KEY PREVIEW: {API_KEY[:2]}...{API_KEY[-2:]}")
 else:
     print("ALPHA VANTAGE KEY FOUND: NO")
 
@@ -35,7 +34,6 @@ print("=" * 60)
 CHECK_INTERVAL = 30
 INTRADAY_INTERVAL = "5min"
 
-# 120 price observations require 121 prior sessions.
 MIN_HISTORICAL_SESSIONS = 121
 MAX_HISTORICAL_MONTHS = 8
 
@@ -229,10 +227,7 @@ def get_historical_intraday(
                 f"PRIOR SESSIONS: {prior_sessions}"
             )
 
-            if (
-                prior_sessions
-                >= MIN_HISTORICAL_SESSIONS
-            ):
+            if prior_sessions >= MIN_HISTORICAL_SESSIONS:
                 break
 
     HISTORICAL_BAR_CACHE[symbol] = cached_bars
@@ -257,10 +252,6 @@ def get_market_data(symbol):
                 "ERROR: ALPHA_VANTAGE_API_KEY not found"
             )
             return None
-
-        # ==================================================
-        # REAL-TIME QUOTE
-        # ==================================================
 
         quote_url = (
             f"https://www.alphavantage.co/query"
@@ -318,19 +309,12 @@ def get_market_data(symbol):
             )
         )
 
-        if (
-            price == 0
-            or previous_close == 0
-        ):
+        if price == 0 or previous_close == 0:
             print(
                 f"{symbol} QUOTE BAD:",
                 quote
             )
             return None
-
-        # ==================================================
-        # CURRENT INTRADAY HISTORY
-        # ==================================================
 
         candle_url = (
             f"https://www.alphavantage.co/query"
@@ -400,9 +384,7 @@ def get_market_data(symbol):
             )
             return None
 
-        latest_timestamp = (
-            current_bars[-1]["timestamp"]
-        )
+        latest_timestamp = current_bars[-1]["timestamp"]
 
         bars = get_historical_intraday(
             symbol=symbol,
@@ -413,6 +395,7 @@ def get_market_data(symbol):
         return {
             "price": price,
             "previous_close": previous_close,
+            "latest_timestamp": latest_timestamp,
             "bars": bars,
         }
 
@@ -426,7 +409,7 @@ def get_market_data(symbol):
 def run():
     print("=" * 60)
     print(
-        "IAL ENGINE LIVE â€” "
+        "IAL ENGINE LIVE — "
         "COMPARTMENTALIZED METRICS"
     )
     print("=" * 60)
@@ -440,19 +423,15 @@ def run():
 
                 if not market_data:
                     print(
-                        f"SKIPPING {symbol} â€” bad data"
+                        f"SKIPPING {symbol} — bad data"
                     )
                     continue
 
                 price = market_data["price"]
-                previous_close = (
-                    market_data["previous_close"]
-                )
+                previous_close = market_data["previous_close"]
+                latest_timestamp = market_data["latest_timestamp"]
+                trading_date = latest_timestamp.split(" ")[0]
                 bars = market_data["bars"]
-
-                # ==================================================
-                # RVOL ENGINE
-                # ==================================================
 
                 rvol_data = calculate_rvol(
                     bars
@@ -464,38 +443,21 @@ def run():
                     rvol_data["participation_pct"]
                 )
 
-                # ==================================================
-                # PRICE ENGINE
-                # ==================================================
-
                 price_data = calculate_price_activity(
                     bars=bars,
                     current_price=price,
                     previous_close=previous_close,
                 )
 
-                change_pct = (
-                    price_data["change_pct"]
-                )
-
+                change_pct = price_data["change_pct"]
                 price_activity_ratio = (
                     price_data["price_activity_ratio"]
                 )
+                recent_change = price_data["recent_change"]
+                velocity = price_data["velocity"]
 
-                recent_change = (
-                    price_data["recent_change"]
-                )
-
-                velocity = (
-                    price_data["velocity"]
-                )
-
-                # ==================================================
-                # STATE + CLASSIFICATION
-                # ==================================================
-
-                previous_state = (
-                    get_previous_state(symbol)
+                previous_state = get_previous_state(
+                    symbol
                 )
 
                 signal = classify_signal(
@@ -528,10 +490,37 @@ def run():
                     )
                     continue
 
-                if should_alert(
-                    symbol,
-                    state
-                ):
+                alert_allowed = should_alert(
+                    symbol=symbol,
+                    new_state=state,
+                    trading_date=trading_date,
+                    price=price,
+                    change_pct=change_pct,
+                    rvol=rvol,
+                    price_activity_ratio=price_activity_ratio,
+                )
+
+                if alert_allowed:
+                    alert_context = get_alert_context(
+                        symbol
+                    )
+
+                    signal["event_type"] = (
+                        alert_context.get("event_type")
+                    )
+                    signal["alert_count"] = (
+                        alert_context.get("alert_count", 1)
+                    )
+                    signal["alert_label"] = (
+                        alert_context.get("alert_label")
+                    )
+                    signal["continuation_count"] = (
+                        alert_context.get(
+                            "continuation_count",
+                            0
+                        )
+                    )
+
                     send_alert(
                         symbol=symbol,
                         price=price,
@@ -544,15 +533,27 @@ def run():
                     print(
                         f"ALERT: {symbol} | "
                         f"{signal['name']} | "
+                        f"EVENT "
+                        f"{alert_context.get('event_type')} | "
+                        f"COUNT "
+                        f"{alert_context.get('alert_count', 1)} | "
+                        f"LABEL "
+                        f"{alert_context.get('alert_label') or '1st Alert'} | "
                         f"RVOL {rvol:.2f} | "
                         f"PRICE RATIO "
                         f"{price_activity_ratio:.2f}x"
                     )
 
                 else:
+                    alert_context = get_alert_context(
+                        symbol
+                    )
+
                     print(
-                        f"NO DUPLICATE: "
-                        f"{symbol} - {state}"
+                        f"SUPPRESSED: "
+                        f"{symbol} - {state} | "
+                        f"MOVE FROM LAST ALERT "
+                        f"{alert_context.get('last_move_from_alert_pct', 0):+.2f}%"
                     )
 
             except Exception as e:
