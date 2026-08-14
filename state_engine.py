@@ -1,49 +1,76 @@
-# =========================
-# STATE ENGINE (LOCKED)
-# =========================
+"price_activity_ratio": price_activity_ratio,
+            "event_start_date": current_date,
+            "event_start_price": price,
+            "continuation_count": 0,
+            "last_event_type": "NEW_STATE",
+        }
 
-import json
-import os
+        save_state(state)
+        return True
 
-STATE_FILE = "state.json"
+    # ==================================================
+    # LEGACY MIGRATION
+    # ==================================================
 
+    if last_date is None:
+        state[symbol] = {
+            "state": new_state,
+            "date": current_date,
+            "price": price,
+            "change_pct": change_pct,
+            "rvol": rvol,
+            "price_activity_ratio": price_activity_ratio,
+            "event_start_date": current_date,
+            "event_start_price": price,
+            "continuation_count": 0,
+            "last_event_type": "MIGRATED",
+        }
 
-def load_state():
-    if not os.path.exists(STATE_FILE):
-        return {}
-
-    try:
-        with open(STATE_FILE, "r") as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"State load error: {e}")
-        return {}
-
-
-def save_state(state):
-    try:
-        with open(STATE_FILE, "w") as f:
-            json.dump(state, f, indent=4)
-    except Exception as e:
-        print(f"State save error: {e}")
-
-
-def get_previous_state(symbol):
-    state = load_state()
-    return state.get(symbol)
-
-
-def should_alert(symbol, new_state):
-    state = load_state()
-
-    last_state = state.get(symbol)
-
-    # 🚫 NO DUPLICATES
-    if last_state == new_state:
+        save_state(state)
         return False
 
-    # ✅ UPDATE STATE
-    state[symbol] = new_state
+    # ==================================================
+    # CROSS-SESSION CONTINUATION
+    # ==================================================
+
+    if last_date != current_date:
+        continuation_count = (
+            int(previous_event.get("continuation_count", 0)) + 1
+        )
+
+        state[symbol] = {
+            "state": new_state,
+            "date": current_date,
+            "price": price,
+            "change_pct": change_pct,
+            "rvol": rvol,
+            "price_activity_ratio": price_activity_ratio,
+            "event_start_date": (
+                previous_event.get("event_start_date") or last_date
+            ),
+            "event_start_price": (
+                previous_event.get("event_start_price")
+                if previous_event.get("event_start_price") is not None
+                else previous_event.get("price")
+            ),
+            "continuation_count": continuation_count,
+            "last_event_type": "CONTINUATION",
+        }
+
+        save_state(state)
+        return True
+
+    # ==================================================
+    # SAME-SESSION DUPLICATE
+    # ==================================================
+
+    previous_event["price"] = price
+    previous_event["change_pct"] = change_pct
+    previous_event["rvol"] = rvol
+    previous_event["price_activity_ratio"] = price_activity_ratio
+    previous_event["last_event_type"] = "DUPLICATE"
+
+    state[symbol] = previous_event
     save_state(state)
 
-    return True
+    return False
