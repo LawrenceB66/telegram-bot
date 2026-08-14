@@ -35,13 +35,71 @@ def send_alert(
         volume = signal.get("volume", "N/A")
         notes = signal.get("read", "")
 
+        event_type = signal.get(
+            "event_type"
+        )
+
+        alert_count = int(
+            signal.get(
+                "alert_count",
+                1
+            )
+        )
+
+        alert_label = signal.get(
+            "alert_label"
+        )
+
+        # ==================================================
+        # EVENT DISPLAY
+        # ==================================================
+
+        signal_line = (
+            f"{emoji} {name}"
+        )
+
+        if event_type in [
+            "CONTINUATION",
+            "CONTINUATION_STATE_CHANGE",
+        ]:
+            if alert_count > 1 and alert_label:
+                signal_line += (
+                    f" — Continuation "
+                    f"({alert_label})"
+                )
+            else:
+                signal_line += (
+                    " — Continuation"
+                )
+
+        elif (
+            event_type == "REPEAT_ALERT"
+            and alert_label
+        ):
+            signal_line += (
+                f" — {alert_label}"
+            )
+
+        elif (
+            event_type == "STATE_CHANGE"
+            and alert_label
+        ):
+            signal_line += (
+                f" — {alert_label}"
+            )
+
+        # ==================================================
+        # VOLUME DISPLAY
+        # ==================================================
+
         if participation_pct is not None:
             participation_str = (
                 f"{float(participation_pct):+.0f}%"
             )
 
             volume_line = (
-                f"{participation_str} ({volume})"
+                f"{participation_str} "
+                f"({volume})"
             )
 
         elif rvol is not None:
@@ -53,11 +111,16 @@ def send_alert(
         else:
             volume_line = volume
 
+        # ==================================================
+        # TELEGRAM MESSAGE
+        # ==================================================
+
         message = (
             f"#{symbol}\n"
-            f"Price: ${price_str} • {change_str}%\n"
+            f"Price: ${price_str} • "
+            f"{change_str}%\n"
             f"\n"
-            f"{emoji} {name}\n"
+            f"{signal_line}\n"
             f"Volume: {volume_line}\n"
         )
 
@@ -86,7 +149,9 @@ def send_alert(
         if response.status_code == 200:
             print(
                 f"ALERT SENT: "
-                f"{symbol} - {name}"
+                f"{symbol} - {name} | "
+                f"{event_type or 'NEW_EVENT'} | "
+                f"ALERT {alert_count}"
             )
 
         else:
