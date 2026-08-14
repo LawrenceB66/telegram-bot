@@ -3,19 +3,8 @@ import os
 from datetime import date
 
 
-VOLUME_PATH = os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
+STATE_FILE = "state.json"
 
-STATE_FILE = (
-    os.path.join(
-        VOLUME_PATH,
-        "state.json"
-    )
-    if VOLUME_PATH
-    else "state.json"
-)
-
-# Same-state repeat alerts require a material move
-# from the LAST ALERTED PRICE.
 REPEAT_ALERT_MOVE_PCT = 5.0
 
 
@@ -44,19 +33,6 @@ def save_state(state):
 
 
 def _normalize_event(raw_event):
-    """
-    Supports both:
-
-    Legacy:
-        "SNDK": "BUILDING"
-
-    New:
-        "SNDK": {
-            "state": "BUILDING",
-            ...
-        }
-    """
-
     if raw_event is None:
         return None
 
@@ -142,6 +118,24 @@ def _ordinal(number):
     return f"{number}{suffix}"
 
 
+def seed_event(symbol, event):
+    """
+    Seed runtime state from reconstructed market history.
+
+    This lets event memory recover after a deployment
+    without requiring persistent infrastructure.
+    """
+
+    if not event:
+        return False
+
+    state = load_state()
+    state[symbol] = event
+    save_state(state)
+
+    return True
+
+
 def get_previous_state(symbol):
     state = load_state()
 
@@ -164,11 +158,9 @@ def get_previous_event(symbol):
 
 
 def get_alert_context(symbol):
-    """
-    Provides alert metadata for bot.py / send_alert.py.
-    """
-
-    event = get_previous_event(symbol)
+    event = get_previous_event(
+        symbol
+    )
 
     if not event:
         return {
@@ -234,28 +226,6 @@ def should_alert(
     rvol=None,
     price_activity_ratio=None,
 ):
-    """
-    EVENT MEMORY RULES
-
-    FIRST QUALIFYING EVENT
-    -> Alert #1
-
-    SAME STATE + +/-5% MOVE FROM LAST ALERTED PRICE
-    -> Alert again
-    -> 2nd Alert / 3rd Alert / 4th Alert...
-
-    SAME STATE + NEW SESSION + MATERIAL MOVE
-    -> Continuation alert
-
-    SAME STATE + INSUFFICIENT MOVE
-    -> Suppress
-    -> Keep measuring from the last ALERTED price
-
-    STATE CHANGE
-    -> Alert immediately
-    -> Preserve event history
-    """
-
     state = load_state()
 
     previous_event = _normalize_event(
@@ -285,10 +255,6 @@ def should_alert(
             price_activity_ratio
         )
     )
-
-    # ==================================================
-    # FIRST QUALIFYING EVENT
-    # ==================================================
 
     if previous_event is None:
         state[symbol] = {
@@ -324,13 +290,6 @@ def should_alert(
     last_alert_price = previous_event.get(
         "last_alert_price"
     )
-
-    # ==================================================
-    # LEGACY MIGRATION
-    #
-    # Convert old string-only state into event memory.
-    # Do not generate a false repeat alert.
-    # ==================================================
 
     if (
         last_alert_date is None
@@ -396,25 +355,21 @@ def should_alert(
         )
     )
 
-    # ==================================================
-    # ALWAYS UPDATE LATEST OBSERVATION
-    # ==================================================
+    previous_event[
+        "latest_date"
+    ] = current_date
 
-    previous_event["latest_date"] = (
-        current_date
-    )
+    previous_event[
+        "latest_price"
+    ] = current_price
 
-    previous_event["latest_price"] = (
-        current_price
-    )
+    previous_event[
+        "latest_change_pct"
+    ] = current_change_pct
 
-    previous_event["latest_change_pct"] = (
-        current_change_pct
-    )
-
-    previous_event["latest_rvol"] = (
-        current_rvol
-    )
+    previous_event[
+        "latest_rvol"
+    ] = current_rvol
 
     previous_event[
         "latest_price_activity_ratio"
@@ -423,12 +378,6 @@ def should_alert(
     previous_event[
         "last_move_from_alert_pct"
     ] = move_from_last_alert_pct
-
-    # ==================================================
-    # STATE CHANGE
-    #
-    # New classification is automatically alert-worthy.
-    # ==================================================
 
     if state_changed:
         alert_count += 1
@@ -440,8 +389,38 @@ def should_alert(
             )
 
         else:
+            event_type = "STATE_CHANGE"
+
+        previous_event.update(
+            {
+                "state": new_state,
+                "last_alert_date": current_date,
+                "last_alert_price": current_price,
+                "alert_count": alert_count,
+                "continuation_count": (
+                    continuation_count
+                ),
+                "last_event_type": event_type,
+            }
+        )
+
+        state[symbol] = previous_event
+        save_state(state)
+
+        return True
+
+    if material_move:
+        alert_count += 1
+
+        if new_session:
+            continuation_count += 1
             event_type = (
-                "STATE_CHANGE"
+                "CONTINUATION"
+            )
+
+        else:
+            event_type = (
+                "REPEAT_ALERT"
             )
 
         previous_event.update(
@@ -462,63 +441,13 @@ def should_alert(
 
         return True
 
-    # ==================================================
-    # SAME STATE + MATERIAL MOVE
-    #
-    # Direction does not matter.
-    #
-    # +5% from last alert -> repeat
-    # -5% from last alert -> repeat
-    #
-    # The signal must already be qualifying because
-    # should_alert() is only called after classification.
-    # ==================================================
+    previous_event[
+        "state"
+    ] = new_state
 
-    if material_move:
-        alert_count += 1
-
-        if new_session:
-            continuation_count += 1
-            event_type = "CONTINUATION"
-
-        else:
-            event_type = "REPEAT_ALERT"
-
-        previous_event.update(
-            {
-                "state": new_state,
-                "last_alert_date": current_date,
-                "last_alert_price": current_price,
-                "alert_count": alert_count,
-                "continuation_count": (
-                    continuation_count
-                ),
-                "last_event_type": event_type,
-            }
-        )
-
-        state[symbol] = previous_event
-        save_state(state)
-
-        return True
-
-    # ==================================================
-    # SAME STATE + INSUFFICIENT MOVE
-    #
-    # Do NOT move last_alert_price.
-    #
-    # This is critical:
-    # the next scan continues measuring from the price
-    # actually shown to the Telegram room.
-    # ==================================================
-
-    previous_event["state"] = (
-        new_state
-    )
-
-    previous_event["last_event_type"] = (
-        "SUPPRESSED"
-    )
+    previous_event[
+        "last_event_type"
+    ] = "SUPPRESSED"
 
     state[symbol] = previous_event
     save_state(state)
