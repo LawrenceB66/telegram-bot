@@ -3,7 +3,16 @@ import os
 from datetime import date
 
 
-STATE_FILE = "state.json"
+VOLUME_PATH = os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
+
+STATE_FILE = (
+    os.path.join(
+        VOLUME_PATH,
+        "state.json"
+    )
+    if VOLUME_PATH
+    else "state.json"
+)
 
 # Same-state repeat alerts require a material move
 # from the LAST ALERTED PRICE.
