@@ -6,6 +6,25 @@ BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 
+def _ordinal(number):
+    number = int(number)
+
+    if 10 <= number % 100 <= 20:
+        suffix = "th"
+
+    else:
+        suffix = {
+            1: "st",
+            2: "nd",
+            3: "rd",
+        }.get(
+            number % 10,
+            "th"
+        )
+
+    return f"{number}{suffix}"
+
+
 def send_alert(
     symbol,
     price,
@@ -27,13 +46,33 @@ def send_alert(
             )
             return
 
-        price_str = f"{float(price):.2f}"
-        change_str = f"{float(change_pct):.2f}"
+        price_str = (
+            f"{float(price):.2f}"
+        )
 
-        emoji = signal.get("emoji", "")
-        name = signal.get("name", "")
-        volume = signal.get("volume", "N/A")
-        notes = signal.get("read", "")
+        change_str = (
+            f"{float(change_pct):+.2f}%"
+        )
+
+        emoji = signal.get(
+            "emoji",
+            ""
+        )
+
+        name = signal.get(
+            "name",
+            ""
+        )
+
+        volume = signal.get(
+            "volume",
+            "N/A"
+        )
+
+        notes = signal.get(
+            "read",
+            ""
+        )
 
         event_type = signal.get(
             "event_type"
@@ -46,47 +85,14 @@ def send_alert(
             )
         )
 
-        alert_label = signal.get(
-            "alert_label"
-        )
-
         # ==================================================
-        # EVENT DISPLAY
+        # ALERT DISPLAY
         # ==================================================
 
-        signal_line = (
-            f"{emoji} {name}"
-        )
-
-        if event_type in [
-            "CONTINUATION",
-            "CONTINUATION_STATE_CHANGE",
-        ]:
-            if alert_count > 1 and alert_label:
-                signal_line += (
-                    f" — Continuation "
-                    f"({alert_label})"
-                )
-            else:
-                signal_line += (
-                    " — Continuation"
-                )
-
-        elif (
-            event_type == "REPEAT_ALERT"
-            and alert_label
-        ):
-            signal_line += (
-                f" — {alert_label}"
-            )
-
-        elif (
-            event_type == "STATE_CHANGE"
-            and alert_label
-        ):
-            signal_line += (
-                f" — {alert_label}"
-            )
+        alert_line = (
+            f"{emoji} "
+            f"{_ordinal(alert_count)} Alert"
+        ).strip()
 
         # ==================================================
         # VOLUME DISPLAY
@@ -117,11 +123,12 @@ def send_alert(
 
         message = (
             f"#{symbol}\n"
-            f"Price: ${price_str} • "
-            f"{change_str}%\n"
             f"\n"
-            f"{signal_line}\n"
+            f"Price: ${price_str} • "
+            f"{change_str}\n"
             f"Volume: {volume_line}\n"
+            f"\n"
+            f"{alert_line}\n"
         )
 
         if notes:
