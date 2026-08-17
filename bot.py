@@ -578,6 +578,8 @@ def run():
                     change_pct=change_pct,
                     rvol=rvol,
                     price_activity_ratio=price_activity_ratio,
+                    signal_name=signal.get("name"),
+                    driver=signal.get("driver"),
                 )
 
                 if alert_allowed:
@@ -622,6 +624,8 @@ def run():
                         f"{alert_context.get('alert_count', 1)} | "
                         f"LABEL "
                         f"{alert_context.get('alert_label') or '1st Alert'} | "
+                        f"DRIVER "
+                        f"{signal.get('driver') or 'N/A'} | "
                         f"RVOL {rvol:.2f} | "
                         f"PRICE RATIO "
                         f"{price_activity_ratio:.2f}x"
@@ -635,6 +639,8 @@ def run():
                     print(
                         f"SUPPRESSED: "
                         f"{symbol} - {state} | "
+                        f"DRIVER "
+                        f"{signal.get('driver') or 'N/A'} | "
                         f"MOVE FROM LAST ALERT "
                         f"{alert_context.get('last_move_from_alert_pct', 0):+.2f}%"
                     )
