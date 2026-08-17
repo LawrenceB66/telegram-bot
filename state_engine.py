@@ -48,6 +48,12 @@ def _normalize_event(raw_event):
             "latest_change_pct": None,
             "latest_rvol": None,
             "latest_price_activity_ratio": None,
+            "latest_signal_name": None,
+            "latest_driver": None,
+            "latest_signal_family": None,
+            "last_alert_signal_name": None,
+            "last_alert_driver": None,
+            "last_alert_signal_family": None,
             "alert_count": 0,
             "continuation_count": 0,
             "last_event_type": "LEGACY",
@@ -118,12 +124,151 @@ def _ordinal(number):
     return f"{number}{suffix}"
 
 
+def _normalize_signal_name(signal_name):
+    if not signal_name:
+        return None
+
+    return str(signal_name).strip().upper()
+
+
+def _normalize_driver(driver):
+    if not driver:
+        return None
+
+    driver = str(driver).strip().upper()
+
+    if driver in {
+        "PRICE",
+        "VOLUME",
+        "PRICE + VOLUME",
+    }:
+        return driver
+
+    return None
+
+
+def _signal_family(
+    signal_name=None,
+    state=None
+):
+    """
+    Converts the visible signal classification into a
+    stable event family.
+
+    State fallback keeps this file compatible until
+    signal_name is handed in directly by bot.py.
+    """
+
+    name = _normalize_signal_name(
+        signal_name
+    )
+
+    if name:
+        if "MOMENTUM SURGE" in name:
+            return "MOMENTUM"
+
+        if "ACTIVE EXPANSION" in name:
+            return "EXPANSION"
+
+        if "PRESSURE" in name:
+            return "PRESSURE"
+
+        if "EXHAUSTION" in name:
+            return "EXHAUSTION"
+
+        if "BREAKDOWN" in name:
+            return "BREAKDOWN"
+
+    state_name = (
+        str(state).strip().upper()
+        if state is not None
+        else ""
+    )
+
+    if state_name in {
+        "BUILDING",
+        "LOADED",
+    }:
+        return "EXPANSION"
+
+    if state_name == "EXTENDED":
+        return "MOMENTUM"
+
+    if state_name == "OVERBOUGHT":
+        return "EXHAUSTION"
+
+    if state_name in {
+        "DOWNSIDE",
+        "BREAKDOWN",
+    }:
+        return "BREAKDOWN"
+
+    return state_name or None
+
+
+def _material_signal_change(
+    last_family,
+    new_family
+):
+    """
+    Determines whether a classification transition is
+    important enough to bypass the ±5% repeat gate.
+
+    Ordinary internal state movement inside the same
+    family is NOT alert-worthy.
+    """
+
+    if (
+        not last_family
+        or not new_family
+        or last_family == new_family
+    ):
+        return False
+
+    # Failure / reversal is always material.
+    if new_family == "BREAKDOWN":
+        return True
+
+    # Recovery from downside into a constructive family
+    # is also a meaningful regime transition.
+    if (
+        last_family == "BREAKDOWN"
+        and new_family != "BREAKDOWN"
+    ):
+        return True
+
+    # Exhaustion is materially different from expansion
+    # or momentum and should be surfaced immediately.
+    if new_family == "EXHAUSTION":
+        return True
+
+    # Price expansion emerging from contained pressure.
+    if (
+        last_family == "PRESSURE"
+        and new_family in {
+            "EXPANSION",
+            "MOMENTUM",
+        }
+    ):
+        return True
+
+    # Momentum Surge is a true escalation from the lower
+    # constructive families.
+    if (
+        new_family == "MOMENTUM"
+        and last_family in {
+            "PRESSURE",
+            "EXPANSION",
+        }
+    ):
+        return True
+
+    return False
+
+
 def seed_event(symbol, event):
     """
     Seed runtime state from reconstructed market history.
-
-    This lets event memory recover after a deployment
-    without requiring persistent infrastructure.
     """
 
     if not event:
@@ -173,6 +318,9 @@ def get_alert_context(symbol):
             "last_alert_date": None,
             "last_alert_price": None,
             "last_move_from_alert_pct": 0,
+            "signal_name": None,
+            "driver": None,
+            "signal_family": None,
         }
 
     alert_count = int(
@@ -214,6 +362,15 @@ def get_alert_context(symbol):
             "last_move_from_alert_pct",
             0
         ),
+        "signal_name": event.get(
+            "last_alert_signal_name"
+        ),
+        "driver": event.get(
+            "last_alert_driver"
+        ),
+        "signal_family": event.get(
+            "last_alert_signal_family"
+        ),
     }
 
 
@@ -225,6 +382,8 @@ def should_alert(
     change_pct=None,
     rvol=None,
     price_activity_ratio=None,
+    signal_name=None,
+    driver=None,
 ):
     state = load_state()
 
@@ -256,6 +415,23 @@ def should_alert(
         )
     )
 
+    current_signal_name = (
+        _normalize_signal_name(
+            signal_name
+        )
+    )
+
+    current_driver = (
+        _normalize_driver(
+            driver
+        )
+    )
+
+    current_family = _signal_family(
+        signal_name=current_signal_name,
+        state=new_state,
+    )
+
     if previous_event is None:
         state[symbol] = {
             "state": new_state,
@@ -270,6 +446,12 @@ def should_alert(
             "latest_price_activity_ratio": (
                 current_price_activity_ratio
             ),
+            "latest_signal_name": current_signal_name,
+            "latest_driver": current_driver,
+            "latest_signal_family": current_family,
+            "last_alert_signal_name": current_signal_name,
+            "last_alert_driver": current_driver,
+            "last_alert_signal_family": current_family,
             "alert_count": 1,
             "continuation_count": 0,
             "last_event_type": "NEW_EVENT",
@@ -278,10 +460,6 @@ def should_alert(
 
         save_state(state)
         return True
-
-    last_state = previous_event.get(
-        "state"
-    )
 
     last_alert_date = previous_event.get(
         "last_alert_date"
@@ -309,6 +487,16 @@ def should_alert(
                 "latest_price_activity_ratio": (
                     current_price_activity_ratio
                 ),
+                "latest_signal_name": current_signal_name,
+                "latest_driver": current_driver,
+                "latest_signal_family": current_family,
+                "last_alert_signal_name": (
+                    current_signal_name
+                ),
+                "last_alert_driver": current_driver,
+                "last_alert_signal_family": (
+                    current_family
+                ),
                 "alert_count": 1,
                 "continuation_count": 0,
                 "last_event_type": "MIGRATED",
@@ -320,6 +508,20 @@ def should_alert(
         save_state(state)
 
         return False
+
+    last_alert_family = previous_event.get(
+        "last_alert_signal_family"
+    )
+
+    if not last_alert_family:
+        last_alert_family = _signal_family(
+            signal_name=previous_event.get(
+                "last_alert_signal_name"
+            ),
+            state=previous_event.get(
+                "state"
+            ),
+        )
 
     move_from_last_alert_pct = (
         _move_from_last_alert(
@@ -333,12 +535,15 @@ def should_alert(
         >= REPEAT_ALERT_MOVE_PCT
     )
 
-    new_session = (
-        last_alert_date != current_date
+    material_signal_change = (
+        _material_signal_change(
+            last_family=last_alert_family,
+            new_family=current_family,
+        )
     )
 
-    state_changed = (
-        last_state != new_state
+    new_session = (
+        last_alert_date != current_date
     )
 
     alert_count = int(
@@ -355,47 +560,52 @@ def should_alert(
         )
     )
 
-    previous_event[
-        "latest_date"
-    ] = current_date
+    previous_event.update(
+        {
+            "state": new_state,
+            "latest_date": current_date,
+            "latest_price": current_price,
+            "latest_change_pct": current_change_pct,
+            "latest_rvol": current_rvol,
+            "latest_price_activity_ratio": (
+                current_price_activity_ratio
+            ),
+            "latest_signal_name": (
+                current_signal_name
+            ),
+            "latest_driver": current_driver,
+            "latest_signal_family": (
+                current_family
+            ),
+            "last_move_from_alert_pct": (
+                move_from_last_alert_pct
+            ),
+        }
+    )
 
-    previous_event[
-        "latest_price"
-    ] = current_price
-
-    previous_event[
-        "latest_change_pct"
-    ] = current_change_pct
-
-    previous_event[
-        "latest_rvol"
-    ] = current_rvol
-
-    previous_event[
-        "latest_price_activity_ratio"
-    ] = current_price_activity_ratio
-
-    previous_event[
-        "last_move_from_alert_pct"
-    ] = move_from_last_alert_pct
-
-    if state_changed:
+    if material_signal_change:
         alert_count += 1
 
         if new_session:
             continuation_count += 1
             event_type = (
-                "CONTINUATION_STATE_CHANGE"
+                "CONTINUATION_SIGNAL_CHANGE"
             )
 
         else:
-            event_type = "STATE_CHANGE"
+            event_type = "SIGNAL_CHANGE"
 
         previous_event.update(
             {
-                "state": new_state,
                 "last_alert_date": current_date,
                 "last_alert_price": current_price,
+                "last_alert_signal_name": (
+                    current_signal_name
+                ),
+                "last_alert_driver": current_driver,
+                "last_alert_signal_family": (
+                    current_family
+                ),
                 "alert_count": alert_count,
                 "continuation_count": (
                     continuation_count
@@ -414,20 +624,22 @@ def should_alert(
 
         if new_session:
             continuation_count += 1
-            event_type = (
-                "CONTINUATION"
-            )
+            event_type = "CONTINUATION"
 
         else:
-            event_type = (
-                "REPEAT_ALERT"
-            )
+            event_type = "REPEAT_ALERT"
 
         previous_event.update(
             {
-                "state": new_state,
                 "last_alert_date": current_date,
                 "last_alert_price": current_price,
+                "last_alert_signal_name": (
+                    current_signal_name
+                ),
+                "last_alert_driver": current_driver,
+                "last_alert_signal_family": (
+                    current_family
+                ),
                 "alert_count": alert_count,
                 "continuation_count": (
                     continuation_count
@@ -440,10 +652,6 @@ def should_alert(
         save_state(state)
 
         return True
-
-    previous_event[
-        "state"
-    ] = new_state
 
     previous_event[
         "last_event_type"
