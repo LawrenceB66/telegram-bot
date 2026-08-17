@@ -95,7 +95,7 @@ def classify_signal(
                 "name": "Exhaustion",
                 "state": "EXHAUSTION",
                 "volume": volume.title(),
-                "driver": "Price Extension",
+                "driver": "PRICE",
                 "read": (
                     "Price remains extended while "
                     "immediate momentum begins slowing."
@@ -118,7 +118,7 @@ def classify_signal(
                 "name": "Momentum Surge",
                 "state": "EXTENDED",
                 "volume": volume.title(),
-                "driver": "Price + Participation",
+                "driver": "PRICE + VOLUME",
                 "read": (
                     "Price activity and participation "
                     "are expanding together."
@@ -141,11 +141,7 @@ def classify_signal(
                 "name": "Active Expansion",
                 "state": "LOADED",
                 "volume": volume.title(),
-                "driver": (
-                    "Balanced Expansion"
-                    if participation_pct >= 50
-                    else "Price Led"
-                ),
+                "driver": "PRICE + VOLUME",
                 "read": (
                     "Price activity is expanding "
                     "with elevated participation."
@@ -168,11 +164,7 @@ def classify_signal(
                 "name": "Active Expansion",
                 "state": "BUILDING",
                 "volume": volume.title(),
-                "driver": (
-                    "Participation Led"
-                    if participation_pct >= 50
-                    else "Balanced Expansion"
-                ),
+                "driver": "PRICE + VOLUME",
                 "read": (
                     "Price activity is expanding "
                     "with elevated participation."
@@ -195,7 +187,7 @@ def classify_signal(
                 "name": "Pressure Building",
                 "state": "BUILDING",
                 "volume": volume.title(),
-                "driver": "Participation",
+                "driver": "VOLUME",
                 "read": (
                     "Participation is elevated while "
                     "price activity remains contained."
@@ -226,7 +218,7 @@ def classify_signal(
                 "name": "Breakdown",
                 "state": "FAILURE",
                 "volume": volume.title(),
-                "driver": "Price Reversal",
+                "driver": "PRICE",
                 "read": (
                     "Price activity is expanding lower "
                     "while participation remains elevated."
