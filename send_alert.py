@@ -25,6 +25,32 @@ def _ordinal(number):
     return f"{number}{suffix}"
 
 
+def _alert_descriptor(signal_name):
+    if not signal_name:
+        return ""
+
+    name = str(
+        signal_name
+    ).strip().upper()
+
+    if "ACTIVE EXPANSION" in name:
+        return "Expansion"
+
+    if "PRESSURE" in name:
+        return "Pressure"
+
+    if "MOMENTUM SURGE" in name:
+        return "Momentum"
+
+    if "EXHAUSTION" in name:
+        return "Exhaustion"
+
+    if "BREAKDOWN" in name:
+        return "Breakdown"
+
+    return ""
+
+
 def send_alert(
     symbol,
     price,
@@ -89,10 +115,22 @@ def send_alert(
         # ALERT DISPLAY
         # ==================================================
 
-        alert_line = (
-            f"{emoji} "
-            f"{_ordinal(alert_count)} Alert"
-        ).strip()
+        descriptor = _alert_descriptor(
+            name
+        )
+
+        if descriptor:
+            alert_line = (
+                f"{emoji} "
+                f"{descriptor} • "
+                f"{_ordinal(alert_count)} Alert"
+            ).strip()
+
+        else:
+            alert_line = (
+                f"{emoji} "
+                f"{_ordinal(alert_count)} Alert"
+            ).strip()
 
         # ==================================================
         # VOLUME DISPLAY
