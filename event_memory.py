@@ -7,6 +7,7 @@ from signal_logic import classify_signal
 from state_engine import (
     _signal_family,
     _material_signal_change,
+    _material_driver_change,
 )
 
 
@@ -148,6 +149,10 @@ def _apply_observation(
             state=event.get("state"),
         )
 
+    last_alert_driver = event.get(
+        "last_alert_driver"
+    )
+
     move_from_last_alert_pct = 0
 
     if (
@@ -171,6 +176,13 @@ def _apply_observation(
         _material_signal_change(
             last_family=last_alert_family,
             new_family=signal_family,
+        )
+    )
+
+    material_driver_change = (
+        _material_driver_change(
+            last_driver=last_alert_driver,
+            new_driver=driver,
         )
     )
 
@@ -201,6 +213,7 @@ def _apply_observation(
 
     if not (
         material_signal_change
+        or material_driver_change
         or material_move
     ):
         event[
@@ -235,6 +248,17 @@ def _apply_observation(
         else:
             event_type = (
                 "RECONSTRUCTED_SIGNAL_CHANGE"
+            )
+
+    elif material_driver_change:
+        if new_session:
+            event_type = (
+                "RECONSTRUCTED_"
+                "CONTINUATION_DRIVER_CHANGE"
+            )
+        else:
+            event_type = (
+                "RECONSTRUCTED_DRIVER_CHANGE"
             )
 
     else:
@@ -366,9 +390,6 @@ def reconstruct_event_memory(
             )
 
             try:
-                # Historical reconstruction should not
-                # flood production logs with normal live
-                # metric diagnostics.
                 with redirect_stdout(
                     io.StringIO()
                 ):
