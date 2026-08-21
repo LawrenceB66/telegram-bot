@@ -557,7 +557,43 @@ def run():
                     "UNKNOWN"
                 )
 
+                # ==================================================
+                # STATE ENGINE
+                # Every observation, including BASELINE, reaches
+                # state_engine.py so event expiration can be tracked.
+                # ==================================================
+
+                alert_allowed = should_alert(
+                    symbol=symbol,
+                    new_state=state,
+                    trading_date=trading_date,
+                    observation_timestamp=latest_timestamp,
+                    price=price,
+                    change_pct=change_pct,
+                    rvol=rvol,
+                    price_activity_ratio=price_activity_ratio,
+                    signal_name=signal.get("name"),
+                    driver=signal.get("driver"),
+                )
+
+                # ==================================================
+                # BASELINE
+                # Never sends Telegram. State engine has already
+                # processed the observation above.
+                # ==================================================
+
                 if state == "BASELINE":
+                    alert_context = get_alert_context(
+                        symbol
+                    )
+
+                    baseline_count = (
+                        alert_context.get(
+                            "baseline_count",
+                            0
+                        )
+                    )
+
                     print(
                         f"BASELINE: {symbol} | "
                         f"{change_pct:.2f}% | "
@@ -566,21 +602,16 @@ def run():
                         f"{price_activity_ratio:.2f}x | "
                         f"RECENT "
                         f"{recent_change:.2f}% | "
-                        f"{volume}/{velocity}"
+                        f"{volume}/{velocity} | "
+                        f"BASELINE COUNT "
+                        f"{baseline_count}"
                     )
+
                     continue
 
-                alert_allowed = should_alert(
-                    symbol=symbol,
-                    new_state=state,
-                    trading_date=trading_date,
-                    price=price,
-                    change_pct=change_pct,
-                    rvol=rvol,
-                    price_activity_ratio=price_activity_ratio,
-                    signal_name=signal.get("name"),
-                    driver=signal.get("driver"),
-                )
+                # ==================================================
+                # ALERT
+                # ==================================================
 
                 if alert_allowed:
                     alert_context = get_alert_context(
