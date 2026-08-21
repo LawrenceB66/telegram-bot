@@ -6,6 +6,7 @@ from datetime import date
 STATE_FILE = "state.json"
 
 REPEAT_ALERT_MOVE_PCT = 5.0
+BASELINE_TERMINATION_BARS = 3
 
 
 def load_state():
@@ -56,6 +57,8 @@ def _normalize_event(raw_event):
             "last_alert_signal_family": None,
             "alert_count": 0,
             "continuation_count": 0,
+            "baseline_count": 0,
+            "last_baseline_timestamp": None,
             "last_event_type": "LEGACY",
             "last_move_from_alert_pct": 0,
         }
@@ -214,23 +217,18 @@ def _material_signal_change(
     ):
         return False
 
-    # Failure / reversal.
     if new_family == "BREAKDOWN":
         return True
 
-    # Recovery from downside.
     if (
         last_family == "BREAKDOWN"
         and new_family != "BREAKDOWN"
     ):
         return True
 
-    # Exhaustion.
     if new_family == "EXHAUSTION":
         return True
 
-    # Contained participation translating
-    # into active price expansion.
     if (
         last_family == "PRESSURE"
         and new_family in {
@@ -240,7 +238,6 @@ def _material_signal_change(
     ):
         return True
 
-    # Expansion escalating into momentum.
     if (
         new_family == "MOMENTUM"
         and last_family in {
@@ -260,14 +257,6 @@ def _material_driver_change(
     """
     A driver transition bypasses the ±5% gate only
     when a meaningful new component enters the event.
-
-    Notification-worthy:
-        VOLUME -> PRICE
-        VOLUME -> PRICE + VOLUME
-        PRICE  -> PRICE + VOLUME
-
-    Components dropping out or rotating without
-    escalation remain observations only.
     """
 
     last_driver = _normalize_driver(
@@ -307,10 +296,6 @@ def _material_driver_change(
 
 
 def seed_event(symbol, event):
-    """
-    Seed runtime state from reconstructed market history.
-    """
-
     if not event:
         return False
 
@@ -363,6 +348,8 @@ def get_alert_context(symbol):
             "signal_name": None,
             "driver": None,
             "signal_family": None,
+            "baseline_count": 0,
+            "last_baseline_timestamp": None,
         }
 
     alert_count = int(
@@ -413,6 +400,15 @@ def get_alert_context(symbol):
         "signal_family": event.get(
             "last_alert_signal_family"
         ),
+        "baseline_count": int(
+            event.get(
+                "baseline_count",
+                0
+            )
+        ),
+        "last_baseline_timestamp": event.get(
+            "last_baseline_timestamp"
+        ),
     }
 
 
@@ -420,6 +416,7 @@ def should_alert(
     symbol,
     new_state,
     trading_date=None,
+    observation_timestamp=None,
     price=None,
     change_pct=None,
     rvol=None,
@@ -437,6 +434,12 @@ def should_alert(
         str(trading_date)
         if trading_date is not None
         else date.today().isoformat()
+    )
+
+    current_timestamp = (
+        str(observation_timestamp)
+        if observation_timestamp is not None
+        else current_date
     )
 
     current_price = _safe_float(
@@ -473,6 +476,86 @@ def should_alert(
         signal_name=current_signal_name,
         state=new_state,
     )
+
+    # ==================================================
+    # BASELINE / EVENT TERMINATION
+    # ==================================================
+
+    if new_state == "BASELINE":
+        if previous_event is None:
+            return False
+
+        baseline_count = int(
+            previous_event.get(
+                "baseline_count",
+                0
+            )
+        )
+
+        last_baseline_timestamp = (
+            previous_event.get(
+                "last_baseline_timestamp"
+            )
+        )
+
+        # Count only distinct completed market bars.
+        if (
+            last_baseline_timestamp
+            != current_timestamp
+        ):
+            baseline_count += 1
+
+            previous_event[
+                "baseline_count"
+            ] = baseline_count
+
+            previous_event[
+                "last_baseline_timestamp"
+            ] = current_timestamp
+
+        previous_event[
+            "latest_date"
+        ] = current_date
+
+        previous_event[
+            "latest_price"
+        ] = current_price
+
+        previous_event[
+            "latest_change_pct"
+        ] = current_change_pct
+
+        previous_event[
+            "latest_rvol"
+        ] = current_rvol
+
+        previous_event[
+            "latest_price_activity_ratio"
+        ] = current_price_activity_ratio
+
+        previous_event[
+            "last_event_type"
+        ] = "BASELINE_PENDING"
+
+        if (
+            baseline_count
+            >= BASELINE_TERMINATION_BARS
+        ):
+            del state[symbol]
+            save_state(state)
+
+            print(
+                f"EVENT TERMINATED: {symbol} | "
+                f"{baseline_count} CONSECUTIVE "
+                f"BASELINE BARS"
+            )
+
+            return False
+
+        state[symbol] = previous_event
+        save_state(state)
+
+        return False
 
     # ==================================================
     # NEW EVENT
@@ -512,6 +595,8 @@ def should_alert(
             ),
             "alert_count": 1,
             "continuation_count": 0,
+            "baseline_count": 0,
+            "last_baseline_timestamp": None,
             "last_event_type": "NEW_EVENT",
             "last_move_from_alert_pct": 0,
         }
@@ -570,6 +655,8 @@ def should_alert(
                 ),
                 "alert_count": 1,
                 "continuation_count": 0,
+                "baseline_count": 0,
+                "last_baseline_timestamp": None,
                 "last_event_type": "MIGRATED",
                 "last_move_from_alert_pct": 0,
             }
@@ -579,6 +666,18 @@ def should_alert(
         save_state(state)
 
         return False
+
+    # ==================================================
+    # QUALIFYING OBSERVATION RESETS BASELINE COUNT
+    # ==================================================
+
+    previous_event[
+        "baseline_count"
+    ] = 0
+
+    previous_event[
+        "last_baseline_timestamp"
+    ] = None
 
     # ==================================================
     # LAST ALERT CONTEXT
@@ -701,12 +800,8 @@ def should_alert(
 
         previous_event.update(
             {
-                "last_alert_date": (
-                    current_date
-                ),
-                "last_alert_price": (
-                    current_price
-                ),
+                "last_alert_date": current_date,
+                "last_alert_price": current_price,
                 "last_alert_signal_name": (
                     current_signal_name
                 ),
@@ -716,15 +811,11 @@ def should_alert(
                 "last_alert_signal_family": (
                     current_family
                 ),
-                "alert_count": (
-                    alert_count
-                ),
+                "alert_count": alert_count,
                 "continuation_count": (
                     continuation_count
                 ),
-                "last_event_type": (
-                    event_type
-                ),
+                "last_event_type": event_type,
             }
         )
 
@@ -753,12 +844,8 @@ def should_alert(
 
         previous_event.update(
             {
-                "last_alert_date": (
-                    current_date
-                ),
-                "last_alert_price": (
-                    current_price
-                ),
+                "last_alert_date": current_date,
+                "last_alert_price": current_price,
                 "last_alert_signal_name": (
                     current_signal_name
                 ),
@@ -768,15 +855,11 @@ def should_alert(
                 "last_alert_signal_family": (
                     current_family
                 ),
-                "alert_count": (
-                    alert_count
-                ),
+                "alert_count": alert_count,
                 "continuation_count": (
                     continuation_count
                 ),
-                "last_event_type": (
-                    event_type
-                ),
+                "last_event_type": event_type,
             }
         )
 
@@ -805,12 +888,8 @@ def should_alert(
 
         previous_event.update(
             {
-                "last_alert_date": (
-                    current_date
-                ),
-                "last_alert_price": (
-                    current_price
-                ),
+                "last_alert_date": current_date,
+                "last_alert_price": current_price,
                 "last_alert_signal_name": (
                     current_signal_name
                 ),
@@ -820,15 +899,11 @@ def should_alert(
                 "last_alert_signal_family": (
                     current_family
                 ),
-                "alert_count": (
-                    alert_count
-                ),
+                "alert_count": alert_count,
                 "continuation_count": (
                     continuation_count
                 ),
-                "last_event_type": (
-                    event_type
-                ),
+                "last_event_type": event_type,
             }
         )
 
