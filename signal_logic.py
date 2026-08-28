@@ -7,7 +7,9 @@ def classify_signal(
     rvol=None,
     participation_pct=None,
     recent_change=None,
-    price_activity_ratio=None
+    price_activity_ratio=None,
+    drawdown_from_high_pct=None,
+    rebound_from_low_pct=None
 ):
     try:
         change_pct = float(change_pct)
@@ -36,6 +38,18 @@ def classify_signal(
             0
             if price_activity_ratio is None
             else float(price_activity_ratio)
+        )
+
+        drawdown_from_high_pct = (
+            0
+            if drawdown_from_high_pct is None
+            else float(drawdown_from_high_pct)
+        )
+
+        rebound_from_low_pct = (
+            0
+            if rebound_from_low_pct is None
+            else float(rebound_from_low_pct)
         )
 
         # --------------------------------------------------
@@ -72,8 +86,61 @@ def classify_signal(
             0
         )
 
+        material_intraday_reversal = (
+            drawdown_from_high_pct <= -5
+        )
+
+        near_session_low = (
+            rebound_from_low_pct <= 2
+        )
+
         # ==================================================
-        # EXHAUSTION
+        # BREAKDOWN
+        # ==================================================
+
+        path_breakdown = (
+            material_intraday_reversal
+            and near_session_low
+            and rvol >= 1.50
+            and v_rank >= 1
+            and price_activity_ratio >= 1.00
+        )
+
+        state_breakdown = (
+            previous_state in [
+                "BUILDING",
+                "LOADED",
+                "EXTENDED",
+                "STALL"
+            ]
+            and change_pct < 2
+            and rvol >= 1.50
+            and v_rank >= 1
+            and price_activity_ratio >= 1.00
+            and velocity in [
+                "REVERSING",
+                "NEGATIVE"
+            ]
+        )
+
+        if (
+            path_breakdown
+            or state_breakdown
+        ):
+            return {
+                "emoji": "🔻",
+                "name": "Breakdown",
+                "state": "FAILURE",
+                "volume": volume.title(),
+                "driver": "PRICE + VOLUME",
+                "read": (
+                    "Price weakening while "
+                    "participation remains elevated."
+                ),
+            }
+
+        # ==================================================
+        # PRICE STALL
         # ==================================================
 
         if (
@@ -89,16 +156,17 @@ def classify_signal(
                 "STALLING",
                 "SLOWING"
             ]
+            and not material_intraday_reversal
         ):
             return {
                 "emoji": "⚠️",
-                "name": "Exhaustion",
-                "state": "EXHAUSTION",
+                "name": "Price Stall",
+                "state": "STALL",
                 "volume": volume.title(),
                 "driver": "PRICE + VOLUME",
                 "read": (
-                    "Price remains extended while "
-                    "immediate momentum begins slowing."
+                    "Price paused; participation "
+                    "remains elevated."
                 ),
             }
 
@@ -112,6 +180,7 @@ def classify_signal(
             and v_rank >= 3
             and price_activity_ratio >= 1.50
             and vel_rank >= 2
+            and not material_intraday_reversal
         ):
             return {
                 "emoji": "💥",
@@ -120,8 +189,8 @@ def classify_signal(
                 "volume": volume.title(),
                 "driver": "PRICE + VOLUME",
                 "read": (
-                    "Price activity and participation "
-                    "are expanding together."
+                    "Price and participation "
+                    "expanding together."
                 ),
             }
 
@@ -135,6 +204,7 @@ def classify_signal(
             and v_rank >= 2
             and price_activity_ratio >= 1.25
             and vel_rank >= 2
+            and not material_intraday_reversal
         ):
             return {
                 "emoji": "⚡",
@@ -143,7 +213,7 @@ def classify_signal(
                 "volume": volume.title(),
                 "driver": "PRICE + VOLUME",
                 "read": (
-                    "Price activity is expanding "
+                    "Price activity expanding "
                     "with elevated participation."
                 ),
             }
@@ -158,6 +228,7 @@ def classify_signal(
             and v_rank >= 1
             and price_activity_ratio >= 1.00
             and vel_rank >= 1
+            and not material_intraday_reversal
         ):
             return {
                 "emoji": "⚡",
@@ -166,7 +237,7 @@ def classify_signal(
                 "volume": volume.title(),
                 "driver": "PRICE + VOLUME",
                 "read": (
-                    "Price activity is expanding "
+                    "Price activity expanding "
                     "with elevated participation."
                 ),
             }
@@ -181,6 +252,7 @@ def classify_signal(
             and v_rank >= 4
             and 0 < price_activity_ratio <= 1.00
             and recent_change >= 0
+            and not material_intraday_reversal
         ):
             return {
                 "emoji": "💣",
@@ -189,39 +261,8 @@ def classify_signal(
                 "volume": volume.title(),
                 "driver": "VOLUME",
                 "read": (
-                    "Participation is elevated while "
+                    "Participation elevated while "
                     "price activity remains contained."
-                ),
-            }
-
-        # ==================================================
-        # BREAKDOWN
-        # ==================================================
-
-        if (
-            previous_state in [
-                "BUILDING",
-                "LOADED",
-                "EXTENDED"
-            ]
-            and change_pct < 2
-            and rvol >= 1.50
-            and v_rank >= 1
-            and price_activity_ratio >= 1.00
-            and velocity in [
-                "REVERSING",
-                "NEGATIVE"
-            ]
-        ):
-            return {
-                "emoji": "🔻",
-                "name": "Breakdown",
-                "state": "FAILURE",
-                "volume": volume.title(),
-                "driver": "PRICE + VOLUME",
-                "read": (
-                    "Price activity is expanding lower "
-                    "while participation remains elevated."
                 ),
             }
 
