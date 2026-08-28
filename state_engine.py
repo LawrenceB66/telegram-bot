@@ -6,7 +6,6 @@ from datetime import date
 STATE_FILE = "state.json"
 
 REPEAT_ALERT_MOVE_PCT = 5.0
-BASELINE_TERMINATION_BARS = 3
 
 
 def load_state():
@@ -295,6 +294,17 @@ def _material_driver_change(
     ) in material_transitions
 
 
+def _event_session_date(event):
+    if not event:
+        return None
+
+    return (
+        event.get("latest_date")
+        or event.get("last_alert_date")
+        or event.get("event_start_date")
+    )
+
+
 def seed_event(symbol, event):
     if not event:
         return False
@@ -400,15 +410,8 @@ def get_alert_context(symbol):
         "signal_family": event.get(
             "last_alert_signal_family"
         ),
-        "baseline_count": int(
-            event.get(
-                "baseline_count",
-                0
-            )
-        ),
-        "last_baseline_timestamp": event.get(
-            "last_baseline_timestamp"
-        ),
+        "baseline_count": 0,
+        "last_baseline_timestamp": None,
     }
 
 
@@ -478,79 +481,58 @@ def should_alert(
     )
 
     # ==================================================
-    # BASELINE / EVENT TERMINATION
+    # SESSION BOUNDARY
+    # ==================================================
+
+    if previous_event is not None:
+        previous_session_date = (
+            _event_session_date(
+                previous_event
+            )
+        )
+
+        if (
+            previous_session_date is not None
+            and previous_session_date
+            != current_date
+        ):
+            del state[symbol]
+            save_state(state)
+
+            print(
+                f"SESSION CLOSED: {symbol} | "
+                f"{previous_session_date} → "
+                f"{current_date}"
+            )
+
+            previous_event = None
+
+    # ==================================================
+    # BASELINE
     # ==================================================
 
     if new_state == "BASELINE":
         if previous_event is None:
             return False
 
-        baseline_count = int(
-            previous_event.get(
-                "baseline_count",
-                0
-            )
+        previous_event.update(
+            {
+                "latest_date": current_date,
+                "latest_price": current_price,
+                "latest_change_pct": (
+                    current_change_pct
+                ),
+                "latest_rvol": current_rvol,
+                "latest_price_activity_ratio": (
+                    current_price_activity_ratio
+                ),
+                "baseline_count": 0,
+                "last_baseline_timestamp": (
+                    current_timestamp
+                ),
+                "last_event_type": "BASELINE",
+            }
         )
-
-        last_baseline_timestamp = (
-            previous_event.get(
-                "last_baseline_timestamp"
-            )
-        )
-
-        # Count only distinct completed market bars.
-        if (
-            last_baseline_timestamp
-            != current_timestamp
-        ):
-            baseline_count += 1
-
-            previous_event[
-                "baseline_count"
-            ] = baseline_count
-
-            previous_event[
-                "last_baseline_timestamp"
-            ] = current_timestamp
-
-        previous_event[
-            "latest_date"
-        ] = current_date
-
-        previous_event[
-            "latest_price"
-        ] = current_price
-
-        previous_event[
-            "latest_change_pct"
-        ] = current_change_pct
-
-        previous_event[
-            "latest_rvol"
-        ] = current_rvol
-
-        previous_event[
-            "latest_price_activity_ratio"
-        ] = current_price_activity_ratio
-
-        previous_event[
-            "last_event_type"
-        ] = "BASELINE_PENDING"
-
-        if (
-            baseline_count
-            >= BASELINE_TERMINATION_BARS
-        ):
-            del state[symbol]
-            save_state(state)
-
-            print(
-                f"EVENT TERMINATED: {symbol} | "
-                f"{baseline_count} CONSECUTIVE "
-                f"BASELINE BARS"
-            )
-
-            return False
 
         state[symbol] = previous_event
         save_state(state)
@@ -558,7 +540,7 @@ def should_alert(
         return False
 
     # ==================================================
-    # NEW EVENT
+    # NEW SESSION EVENT
     # ==================================================
 
     if previous_event is None:
@@ -630,7 +612,9 @@ def should_alert(
                 "last_alert_price": current_price,
                 "latest_date": current_date,
                 "latest_price": current_price,
-                "latest_change_pct": current_change_pct,
+                "latest_change_pct": (
+                    current_change_pct
+                ),
                 "latest_rvol": current_rvol,
                 "latest_price_activity_ratio": (
                     current_price_activity_ratio
@@ -666,18 +650,6 @@ def should_alert(
         save_state(state)
 
         return False
-
-    # ==================================================
-    # QUALIFYING OBSERVATION RESETS BASELINE COUNT
-    # ==================================================
-
-    previous_event[
-        "baseline_count"
-    ] = 0
-
-    previous_event[
-        "last_baseline_timestamp"
-    ] = None
 
     # ==================================================
     # LAST ALERT CONTEXT
@@ -731,21 +703,10 @@ def should_alert(
         )
     )
 
-    new_session = (
-        last_alert_date != current_date
-    )
-
     alert_count = int(
         previous_event.get(
             "alert_count",
             1
-        )
-    )
-
-    continuation_count = int(
-        previous_event.get(
-            "continuation_count",
-            0
         )
     )
 
@@ -774,6 +735,8 @@ def should_alert(
             "latest_signal_family": (
                 current_family
             ),
+            "baseline_count": 0,
+            "last_baseline_timestamp": None,
             "last_move_from_alert_pct": (
                 move_from_last_alert_pct
             ),
@@ -786,17 +749,6 @@ def should_alert(
 
     if material_signal_change:
         alert_count += 1
-
-        if new_session:
-            continuation_count += 1
-            event_type = (
-                "CONTINUATION_SIGNAL_CHANGE"
-            )
-
-        else:
-            event_type = (
-                "SIGNAL_CHANGE"
-            )
 
         previous_event.update(
             {
@@ -812,10 +764,9 @@ def should_alert(
                     current_family
                 ),
                 "alert_count": alert_count,
-                "continuation_count": (
-                    continuation_count
+                "last_event_type": (
+                    "SIGNAL_CHANGE"
                 ),
-                "last_event_type": event_type,
             }
         )
 
@@ -831,17 +782,6 @@ def should_alert(
     if material_driver_change:
         alert_count += 1
 
-        if new_session:
-            continuation_count += 1
-            event_type = (
-                "CONTINUATION_DRIVER_CHANGE"
-            )
-
-        else:
-            event_type = (
-                "DRIVER_CHANGE"
-            )
-
         previous_event.update(
             {
                 "last_alert_date": current_date,
@@ -856,10 +796,9 @@ def should_alert(
                     current_family
                 ),
                 "alert_count": alert_count,
-                "continuation_count": (
-                    continuation_count
+                "last_event_type": (
+                    "DRIVER_CHANGE"
                 ),
-                "last_event_type": event_type,
             }
         )
 
@@ -875,17 +814,6 @@ def should_alert(
     if material_move:
         alert_count += 1
 
-        if new_session:
-            continuation_count += 1
-            event_type = (
-                "CONTINUATION"
-            )
-
-        else:
-            event_type = (
-                "REPEAT_ALERT"
-            )
-
         previous_event.update(
             {
                 "last_alert_date": current_date,
@@ -900,10 +828,9 @@ def should_alert(
                     current_family
                 ),
                 "alert_count": alert_count,
-                "continuation_count": (
-                    continuation_count
+                "last_event_type": (
+                    "REPEAT_ALERT"
                 ),
-                "last_event_type": event_type,
             }
         )
 
