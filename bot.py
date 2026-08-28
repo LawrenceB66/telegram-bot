@@ -42,15 +42,15 @@ MAX_HISTORICAL_MONTHS = 8
 
 HISTORICAL_BAR_CACHE = {}
 
-# Prevent repeated reconstruction attempts during the same
-# running process. After a redeploy this resets, which is
-# exactly when event history should be reconstructed again.
 EVENT_MEMORY_RECONSTRUCTED = set()
 
 
 def get_json(url, label):
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(
+            url,
+            timeout=10
+        )
 
         if response.status_code != 200:
             print(
@@ -63,7 +63,10 @@ def get_json(url, label):
         return response.json()
 
     except Exception as e:
-        print(f"{label} REQUEST ERROR:", e)
+        print(
+            f"{label} REQUEST ERROR:",
+            e
+        )
         return None
 
 
@@ -73,13 +76,45 @@ def parse_intraday_series(series):
     for timestamp in sorted(series.keys()):
         bar = series[timestamp]
 
-        close = float(bar.get("4. close", 0))
-        volume = float(bar.get("5. volume", 0))
+        high = float(
+            bar.get(
+                "2. high",
+                0
+            )
+        )
 
-        if close > 0 and volume > 0:
+        low = float(
+            bar.get(
+                "3. low",
+                0
+            )
+        )
+
+        close = float(
+            bar.get(
+                "4. close",
+                0
+            )
+        )
+
+        volume = float(
+            bar.get(
+                "5. volume",
+                0
+            )
+        )
+
+        if (
+            high > 0
+            and low > 0
+            and close > 0
+            and volume > 0
+        ):
             bars.append(
                 {
                     "timestamp": timestamp,
+                    "high": high,
+                    "low": low,
                     "close": close,
                     "volume": volume,
                 }
@@ -93,15 +128,22 @@ def merge_bars(*bar_groups):
 
     for bars in bar_groups:
         for bar in bars:
-            merged[bar["timestamp"]] = bar
+            merged[
+                bar["timestamp"]
+            ] = bar
 
     return [
         merged[timestamp]
-        for timestamp in sorted(merged.keys())
+        for timestamp in sorted(
+            merged.keys()
+        )
     ]
 
 
-def get_month_string(timestamp, months_back):
+def get_month_string(
+    timestamp,
+    months_back
+):
     dt = datetime.strptime(
         timestamp,
         "%Y-%m-%d %H:%M:%S"
@@ -114,19 +156,32 @@ def get_month_string(timestamp, months_back):
     )
 
     year = total_months // 12
-    month = (total_months % 12) + 1
+    month = (
+        total_months % 12
+    ) + 1
 
-    return f"{year:04d}-{month:02d}"
+    return (
+        f"{year:04d}-"
+        f"{month:02d}"
+    )
 
 
-def count_prior_sessions(bars, current_date):
+def count_prior_sessions(
+    bars,
+    current_date
+):
     dates = {
         bar["timestamp"].split(" ")[0]
         for bar in bars
-        if bar["timestamp"].split(" ")[0] < current_date
+        if (
+            bar["timestamp"].split(" ")[0]
+            < current_date
+        )
     }
 
-    return len(dates)
+    return len(
+        dates
+    )
 
 
 def get_historical_intraday(
@@ -134,11 +189,15 @@ def get_historical_intraday(
     latest_timestamp,
     current_bars
 ):
-    current_date = latest_timestamp.split(" ")[0]
+    current_date = (
+        latest_timestamp.split(" ")[0]
+    )
 
-    cached_bars = HISTORICAL_BAR_CACHE.get(
-        symbol,
-        []
+    cached_bars = (
+        HISTORICAL_BAR_CACHE.get(
+            symbol,
+            []
+        )
     )
 
     cached_bars = merge_bars(
@@ -146,15 +205,21 @@ def get_historical_intraday(
         current_bars
     )
 
-    prior_sessions = count_prior_sessions(
-        cached_bars,
-        current_date
+    prior_sessions = (
+        count_prior_sessions(
+            cached_bars,
+            current_date
+        )
     )
 
-    if prior_sessions < MIN_HISTORICAL_SESSIONS:
+    if (
+        prior_sessions
+        < MIN_HISTORICAL_SESSIONS
+    ):
         print(
             f"{symbol} HISTORY WARMUP | "
-            f"CURRENT SESSIONS: {prior_sessions}"
+            f"CURRENT SESSIONS: "
+            f"{prior_sessions}"
         )
 
         for months_back in range(
@@ -195,29 +260,39 @@ def get_historical_intraday(
             if "Information" in month_data:
                 print(
                     f"{symbol} ALPHA INFO {month}:",
-                    month_data["Information"]
+                    month_data[
+                        "Information"
+                    ]
                 )
                 continue
 
             if "Error Message" in month_data:
                 print(
                     f"{symbol} ALPHA ERROR {month}:",
-                    month_data["Error Message"]
+                    month_data[
+                        "Error Message"
+                    ]
                 )
                 continue
 
-            month_series = month_data.get(
-                f"Time Series ({INTRADAY_INTERVAL})"
+            month_series = (
+                month_data.get(
+                    f"Time Series "
+                    f"({INTRADAY_INTERVAL})"
+                )
             )
 
             if not month_series:
                 print(
-                    f"{symbol} HISTORY BAD | {month}"
+                    f"{symbol} HISTORY BAD | "
+                    f"{month}"
                 )
                 continue
 
-            month_bars = parse_intraday_series(
-                month_series
+            month_bars = (
+                parse_intraday_series(
+                    month_series
+                )
             )
 
             cached_bars = merge_bars(
@@ -225,29 +300,40 @@ def get_historical_intraday(
                 month_bars
             )
 
-            prior_sessions = count_prior_sessions(
-                cached_bars,
-                current_date
+            prior_sessions = (
+                count_prior_sessions(
+                    cached_bars,
+                    current_date
+                )
             )
 
             print(
                 f"{symbol} HISTORY {month} | "
-                f"PRIOR SESSIONS: {prior_sessions}"
+                f"PRIOR SESSIONS: "
+                f"{prior_sessions}"
             )
 
-            if prior_sessions >= MIN_HISTORICAL_SESSIONS:
+            if (
+                prior_sessions
+                >= MIN_HISTORICAL_SESSIONS
+            ):
                 break
 
-    HISTORICAL_BAR_CACHE[symbol] = cached_bars
+    HISTORICAL_BAR_CACHE[
+        symbol
+    ] = cached_bars
 
-    final_sessions = count_prior_sessions(
-        cached_bars,
-        current_date
+    final_sessions = (
+        count_prior_sessions(
+            cached_bars,
+            current_date
+        )
     )
 
     print(
         f"{symbol} HISTORY READY | "
-        f"PRIOR SESSIONS: {final_sessions}"
+        f"PRIOR SESSIONS: "
+        f"{final_sessions}"
     )
 
     return cached_bars
@@ -257,7 +343,9 @@ def get_market_data(symbol):
     try:
         if not API_KEY:
             print(
-                "ERROR: ALPHA_VANTAGE_API_KEY not found"
+                "ERROR: "
+                "ALPHA_VANTAGE_API_KEY "
+                "not found"
             )
             return None
 
@@ -294,13 +382,17 @@ def get_market_data(symbol):
         if "Error Message" in quote:
             print(
                 f"{symbol} ALPHA ERROR:",
-                quote["Error Message"]
+                quote[
+                    "Error Message"
+                ]
             )
             return None
 
-        global_quote = quote.get(
-            "Global Quote",
-            {}
+        global_quote = (
+            quote.get(
+                "Global Quote",
+                {}
+            )
         )
 
         price = float(
@@ -317,7 +409,10 @@ def get_market_data(symbol):
             )
         )
 
-        if price == 0 or previous_close == 0:
+        if (
+            price == 0
+            or previous_close == 0
+        ):
             print(
                 f"{symbol} QUOTE BAD:",
                 quote
@@ -353,19 +448,24 @@ def get_market_data(symbol):
         if "Information" in candles:
             print(
                 f"{symbol} ALPHA INFO:",
-                candles["Information"]
+                candles[
+                    "Information"
+                ]
             )
             return None
 
         if "Error Message" in candles:
             print(
                 f"{symbol} ALPHA ERROR:",
-                candles["Error Message"]
+                candles[
+                    "Error Message"
+                ]
             )
             return None
 
         series = candles.get(
-            f"Time Series ({INTRADAY_INTERVAL})"
+            f"Time Series "
+            f"({INTRADAY_INTERVAL})"
         )
 
         if not series:
@@ -375,16 +475,21 @@ def get_market_data(symbol):
             )
             return None
 
-        current_bars = parse_intraday_series(
-            series
+        current_bars = (
+            parse_intraday_series(
+                series
+            )
         )
 
         print(
             f"{symbol} DATA CHECK | "
-            f"CURRENT BARS: {len(current_bars)}"
+            f"CURRENT BARS: "
+            f"{len(current_bars)}"
         )
 
-        if len(current_bars) < 5:
+        if (
+            len(current_bars) < 5
+        ):
             print(
                 f"{symbol} INSUFFICIENT "
                 f"INTRADAY DATA: "
@@ -392,49 +497,65 @@ def get_market_data(symbol):
             )
             return None
 
-        latest_timestamp = current_bars[-1]["timestamp"]
+        latest_timestamp = (
+            current_bars[-1][
+                "timestamp"
+            ]
+        )
 
         bars = get_historical_intraday(
             symbol=symbol,
-            latest_timestamp=latest_timestamp,
+            latest_timestamp=(
+                latest_timestamp
+            ),
             current_bars=current_bars,
         )
 
         return {
             "price": price,
-            "previous_close": previous_close,
-            "latest_timestamp": latest_timestamp,
+            "previous_close": (
+                previous_close
+            ),
+            "latest_timestamp": (
+                latest_timestamp
+            ),
             "bars": bars,
         }
 
     except Exception as e:
         print(
-            f"Error fetching {symbol}: {e}"
+            f"Error fetching "
+            f"{symbol}: {e}"
         )
         return None
 
 
-def ensure_event_memory(symbol, bars):
-    """
-    Reconstruct event history once per symbol when runtime
-    state is absent.
-
-    state_engine.py remains responsible for live state.
-    event_memory.py is used only to recover historical context.
-    """
-
-    if symbol in EVENT_MEMORY_RECONSTRUCTED:
+def ensure_event_memory(
+    symbol,
+    bars
+):
+    if (
+        symbol
+        in EVENT_MEMORY_RECONSTRUCTED
+    ):
         return
 
-    EVENT_MEMORY_RECONSTRUCTED.add(symbol)
+    EVENT_MEMORY_RECONSTRUCTED.add(
+        symbol
+    )
 
-    if get_previous_event(symbol) is not None:
+    if (
+        get_previous_event(symbol)
+        is not None
+    ):
         return
 
     try:
-        reconstructed_event = reconstruct_event_memory(
-            bars=bars,
-            exclude_latest=True,
+        reconstructed_event = (
+            reconstruct_event_memory(
+                bars=bars,
+                exclude_latest=True,
+            )
         )
 
         if reconstructed_event:
@@ -444,7 +565,8 @@ def ensure_event_memory(symbol, bars):
             )
 
             print(
-                f"EVENT MEMORY RESTORED: {symbol} | "
+                f"EVENT MEMORY RESTORED: "
+                f"{symbol} | "
                 f"STATE "
                 f"{reconstructed_event.get('state')} | "
                 f"COUNT "
@@ -455,7 +577,8 @@ def ensure_event_memory(symbol, bars):
 
         else:
             print(
-                f"EVENT MEMORY EMPTY: {symbol}"
+                f"EVENT MEMORY EMPTY: "
+                f"{symbol}"
             )
 
     except Exception as e:
@@ -476,21 +599,48 @@ def run():
     while True:
         for symbol in TICKERS:
             try:
-                market_data = get_market_data(
-                    symbol
+                market_data = (
+                    get_market_data(
+                        symbol
+                    )
                 )
 
                 if not market_data:
                     print(
-                        f"SKIPPING {symbol} — bad data"
+                        f"SKIPPING "
+                        f"{symbol} — bad data"
                     )
                     continue
 
-                price = market_data["price"]
-                previous_close = market_data["previous_close"]
-                latest_timestamp = market_data["latest_timestamp"]
-                trading_date = latest_timestamp.split(" ")[0]
-                bars = market_data["bars"]
+                price = (
+                    market_data[
+                        "price"
+                    ]
+                )
+
+                previous_close = (
+                    market_data[
+                        "previous_close"
+                    ]
+                )
+
+                latest_timestamp = (
+                    market_data[
+                        "latest_timestamp"
+                    ]
+                )
+
+                trading_date = (
+                    latest_timestamp.split(
+                        " "
+                    )[0]
+                )
+
+                bars = (
+                    market_data[
+                        "bars"
+                    ]
+                )
 
                 # ==================================================
                 # EVENT MEMORY
@@ -509,35 +659,82 @@ def run():
                     bars
                 )
 
-                volume = rvol_data["volume"]
-                rvol = rvol_data["rvol"]
+                volume = (
+                    rvol_data[
+                        "volume"
+                    ]
+                )
+
+                rvol = (
+                    rvol_data[
+                        "rvol"
+                    ]
+                )
+
                 participation_pct = (
-                    rvol_data["participation_pct"]
+                    rvol_data[
+                        "participation_pct"
+                    ]
                 )
 
                 # ==================================================
                 # PRICE ENGINE
                 # ==================================================
 
-                price_data = calculate_price_activity(
-                    bars=bars,
-                    current_price=price,
-                    previous_close=previous_close,
+                price_data = (
+                    calculate_price_activity(
+                        bars=bars,
+                        current_price=price,
+                        previous_close=(
+                            previous_close
+                        ),
+                    )
                 )
 
-                change_pct = price_data["change_pct"]
-                price_activity_ratio = (
-                    price_data["price_activity_ratio"]
+                change_pct = (
+                    price_data[
+                        "change_pct"
+                    ]
                 )
-                recent_change = price_data["recent_change"]
-                velocity = price_data["velocity"]
+
+                price_activity_ratio = (
+                    price_data[
+                        "price_activity_ratio"
+                    ]
+                )
+
+                recent_change = (
+                    price_data[
+                        "recent_change"
+                    ]
+                )
+
+                velocity = (
+                    price_data[
+                        "velocity"
+                    ]
+                )
+
+                drawdown_from_high_pct = (
+                    price_data[
+                        "drawdown_from_high_pct"
+                    ]
+                )
+
+                rebound_from_low_pct = (
+                    price_data[
+                        "rebound_from_low_pct"
+                    ]
+                )
 
                 # ==================================================
                 # STATE + CLASSIFICATION
                 # ==================================================
 
-                previous_state = get_previous_state(
-                    symbol
+                previous_state = (
+                    get_previous_state(
+                        symbol
+                    )
                 )
 
                 signal = classify_signal(
@@ -545,11 +742,25 @@ def run():
                     change_pct=change_pct,
                     volume=volume,
                     velocity=velocity,
-                    previous_state=previous_state,
+                    previous_state=(
+                        previous_state
+                    ),
                     rvol=rvol,
-                    participation_pct=participation_pct,
-                    recent_change=recent_change,
-                    price_activity_ratio=price_activity_ratio,
+                    participation_pct=(
+                        participation_pct
+                    ),
+                    recent_change=(
+                        recent_change
+                    ),
+                    price_activity_ratio=(
+                        price_activity_ratio
+                    ),
+                    drawdown_from_high_pct=(
+                        drawdown_from_high_pct
+                    ),
+                    rebound_from_low_pct=(
+                        rebound_from_low_pct
+                    ),
                 )
 
                 state = signal.get(
@@ -559,52 +770,68 @@ def run():
 
                 # ==================================================
                 # STATE ENGINE
-                # Every observation, including BASELINE, reaches
-                # state_engine.py so event expiration can be tracked.
                 # ==================================================
 
-                alert_allowed = should_alert(
-                    symbol=symbol,
-                    new_state=state,
-                    trading_date=trading_date,
-                    observation_timestamp=latest_timestamp,
-                    price=price,
-                    change_pct=change_pct,
-                    rvol=rvol,
-                    price_activity_ratio=price_activity_ratio,
-                    signal_name=signal.get("name"),
-                    driver=signal.get("driver"),
+                alert_allowed = (
+                    should_alert(
+                        symbol=symbol,
+                        new_state=state,
+                        trading_date=(
+                            trading_date
+                        ),
+                        observation_timestamp=(
+                            latest_timestamp
+                        ),
+                        price=price,
+                        change_pct=(
+                            change_pct
+                        ),
+                        rvol=rvol,
+                        price_activity_ratio=(
+                            price_activity_ratio
+                        ),
+                        signal_name=(
+                            signal.get(
+                                "name"
+                            )
+                        ),
+                        driver=(
+                            signal.get(
+                                "driver"
+                            )
+                        ),
+                    )
                 )
 
                 # ==================================================
                 # BASELINE
-                # Never sends Telegram. State engine has already
-                # processed the observation above.
                 # ==================================================
 
-                if state == "BASELINE":
-                    alert_context = get_alert_context(
-                        symbol
-                    )
-
-                    baseline_count = (
-                        alert_context.get(
-                            "baseline_count",
-                            0
+                if (
+                    state
+                    == "BASELINE"
+                ):
+                    alert_context = (
+                        get_alert_context(
+                            symbol
                         )
                     )
 
                     print(
-                        f"BASELINE: {symbol} | "
+                        f"BASELINE: "
+                        f"{symbol} | "
                         f"{change_pct:.2f}% | "
-                        f"RVOL {rvol:.2f} | "
+                        f"RVOL "
+                        f"{rvol:.2f} | "
                         f"PRICE RATIO "
                         f"{price_activity_ratio:.2f}x | "
                         f"RECENT "
                         f"{recent_change:.2f}% | "
-                        f"{volume}/{velocity} | "
-                        f"BASELINE COUNT "
-                        f"{baseline_count}"
+                        f"FROM HIGH "
+                        f"{drawdown_from_high_pct:+.2f}% | "
+                        f"FROM LOW "
+                        f"{rebound_from_low_pct:+.2f}% | "
+                        f"{volume}/{velocity}"
                     )
 
                     continue
@@ -614,40 +841,54 @@ def run():
                 # ==================================================
 
                 if alert_allowed:
-                    alert_context = get_alert_context(
-                        symbol
-                    )
-
-                    signal["event_type"] = (
-                        alert_context.get("event_type")
-                    )
-
-                    signal["alert_count"] = (
-                        alert_context.get("alert_count", 1)
-                    )
-
-                    signal["alert_label"] = (
-                        alert_context.get("alert_label")
-                    )
-
-                    signal["continuation_count"] = (
-                        alert_context.get(
-                            "continuation_count",
-                            0
+                    alert_context = (
+                        get_alert_context(
+                            symbol
                         )
+                    )
+
+                    signal[
+                        "event_type"
+                    ] = alert_context.get(
+                        "event_type"
+                    )
+
+                    signal[
+                        "alert_count"
+                    ] = alert_context.get(
+                        "alert_count",
+                        1
+                    )
+
+                    signal[
+                        "alert_label"
+                    ] = alert_context.get(
+                        "alert_label"
+                    )
+
+                    signal[
+                        "continuation_count"
+                    ] = alert_context.get(
+                        "continuation_count",
+                        0
                     )
 
                     send_alert(
                         symbol=symbol,
                         price=price,
-                        change_pct=change_pct,
+                        change_pct=(
+                            change_pct
+                        ),
                         signal=signal,
                         rvol=rvol,
-                        participation_pct=participation_pct,
+                        participation_pct=(
+                            participation_pct
+                        ),
                     )
 
                     print(
-                        f"ALERT: {symbol} | "
+                        f"ALERT: "
+                        f"{symbol} | "
                         f"{signal['name']} | "
                         f"EVENT "
                         f"{alert_context.get('event_type')} | "
@@ -657,28 +898,41 @@ def run():
                         f"{alert_context.get('alert_label') or '1st Alert'} | "
                         f"DRIVER "
                         f"{signal.get('driver') or 'N/A'} | "
-                        f"RVOL {rvol:.2f} | "
+                        f"RVOL "
+                        f"{rvol:.2f} | "
                         f"PRICE RATIO "
-                        f"{price_activity_ratio:.2f}x"
+                        f"{price_activity_ratio:.2f}x | "
+                        f"FROM HIGH "
+                        f"{drawdown_from_high_pct:+.2f}% | "
+                        f"FROM LOW "
+                        f"{rebound_from_low_pct:+.2f}%"
                     )
 
                 else:
-                    alert_context = get_alert_context(
-                        symbol
+                    alert_context = (
+                        get_alert_context(
+                            symbol
+                        )
                     )
 
                     print(
                         f"SUPPRESSED: "
-                        f"{symbol} - {state} | "
+                        f"{symbol} - "
+                        f"{state} | "
                         f"DRIVER "
                         f"{signal.get('driver') or 'N/A'} | "
                         f"MOVE FROM LAST ALERT "
-                        f"{alert_context.get('last_move_from_alert_pct', 0):+.2f}%"
+                        f"{alert_context.get('last_move_from_alert_pct', 0):+.2f}% | "
+                        f"FROM HIGH "
+                        f"{drawdown_from_high_pct:+.2f}% | "
+                        f"FROM LOW "
+                        f"{rebound_from_low_pct:+.2f}%"
                     )
 
             except Exception as e:
                 print(
-                    f"Error with {symbol}: {e}"
+                    f"Error with "
+                    f"{symbol}: {e}"
                 )
 
         time.sleep(
