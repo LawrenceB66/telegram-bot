@@ -16,6 +16,9 @@ def calculate_price_activity(
     5-minute bar and compares it with historical price
     activity at the same clock time across 20, 60, 90,
     and 120 prior trading sessions.
+
+    Intraday path tracks current-session price location
+    relative to the developing session high and low.
     """
 
     if (
@@ -39,7 +42,7 @@ def calculate_price_activity(
     # ==================================================
     # REAL-TIME DIRECTIONAL PRICE CHANGE
     #
-    # Used for directional classification.
+    # Current live price versus prior-session close.
     # ==================================================
 
     change_pct = (
@@ -49,6 +52,8 @@ def calculate_price_activity(
 
     # ==================================================
     # SAME-TIME PRICE ACTIVITY
+    #
+    # Magnitude measurement only.
     #
     # Uses the latest completed 5-minute bar so today's
     # normalized price activity is aligned with the same
@@ -76,13 +81,33 @@ def calculate_price_activity(
         bar_date = timestamp.split(" ")[0]
         bar_time = timestamp.split(" ")[1][:5]
 
+        bar_close = float(
+            bar["close"]
+        )
+
+        bar_high = float(
+            bar.get(
+                "high",
+                bar_close
+            )
+        )
+
+        bar_low = float(
+            bar.get(
+                "low",
+                bar_close
+            )
+        )
+
         if bar_date not in sessions:
             sessions[bar_date] = []
 
         sessions[bar_date].append(
             {
                 "time": bar_time,
-                "close": float(bar["close"]),
+                "close": bar_close,
+                "high": bar_high,
+                "low": bar_low,
             }
         )
 
@@ -255,19 +280,90 @@ def calculate_price_activity(
         )
 
     # ==================================================
-    # RECENT PRICE MOVEMENT
-    #
-    # Uses current-session completed 5-minute bars only.
+    # CURRENT SESSION BARS
     # ==================================================
 
-    current_session_closes = [
-        item["close"]
+    current_session_bars = [
+        item
         for item in sessions.get(
             current_date,
             []
         )
         if item["time"] <= current_time
     ]
+
+    current_session_closes = [
+        item["close"]
+        for item in current_session_bars
+    ]
+
+    # ==================================================
+    # INTRADAY PRICE PATH
+    #
+    # Tracks price location relative to the developing
+    # current-session high and low.
+    #
+    # This is independent from change_pct, which remains
+    # anchored to the prior-session close.
+    # ==================================================
+
+    if current_session_bars:
+        completed_session_high = max(
+            item["high"]
+            for item in current_session_bars
+        )
+
+        completed_session_low = min(
+            item["low"]
+            for item in current_session_bars
+        )
+
+        session_high = max(
+            completed_session_high,
+            current_price
+        )
+
+        session_low = min(
+            completed_session_low,
+            current_price
+        )
+
+    else:
+        session_high = current_price
+        session_low = current_price
+
+    drawdown_from_high_pct = (
+        0
+        if session_high == 0
+        else (
+            (
+                current_price
+                - session_high
+            )
+            / session_high
+        ) * 100
+    )
+
+    rebound_from_low_pct = (
+        0
+        if session_low == 0
+        else (
+            (
+                current_price
+                - session_low
+            )
+            / session_low
+        ) * 100
+    )
+
+    # ==================================================
+    # RECENT PRICE MOVEMENT
+    #
+    # Uses current-session completed 5-minute bars only.
+    #
+    # Four closes represents approximately 15 minutes
+    # between the reference close and latest close.
+    # ==================================================
 
     if len(current_session_closes) >= 4:
         reference_close = (
@@ -291,9 +387,15 @@ def calculate_price_activity(
 
     # ==================================================
     # VELOCITY CLASSIFICATION
+    #
+    # Immediate reversal takes precedence over the
+    # broader extended-price stall condition.
     # ==================================================
 
-    if (
+    if recent_change <= -0.5:
+        velocity = "REVERSING"
+
+    elif (
         change_pct >= 10
         and recent_change <= 0
     ):
@@ -307,9 +409,6 @@ def calculate_price_activity(
 
     elif recent_change >= 0.2:
         velocity = "HIGH"
-
-    elif recent_change <= -0.5:
-        velocity = "REVERSING"
 
     elif recent_change >= 0:
         velocity = "BUILDING"
@@ -334,17 +433,37 @@ def calculate_price_activity(
         f"{composite_price_baseline:.2f}% | "
         f"RATIO {price_activity_ratio:.2f}x | "
         f"RECENT {recent_change:+.2f}% | "
+        f"SESSION HIGH {session_high:.2f} | "
+        f"SESSION LOW {session_low:.2f} | "
+        f"FROM HIGH "
+        f"{drawdown_from_high_pct:+.2f}% | "
+        f"FROM LOW "
+        f"{rebound_from_low_pct:+.2f}% | "
         f"VELOCITY {velocity}"
     )
 
     return {
         "change_pct": change_pct,
-        "price_activity": current_price_activity,
-        "price_activity_ratio": price_activity_ratio,
-        "price_activity_pct": price_activity_pct,
+        "price_activity": (
+            current_price_activity
+        ),
+        "price_activity_ratio": (
+            price_activity_ratio
+        ),
+        "price_activity_pct": (
+            price_activity_pct
+        ),
         "recent_change": recent_change,
         "velocity": velocity,
         "current_time": current_time,
+        "session_high": session_high,
+        "session_low": session_low,
+        "drawdown_from_high_pct": (
+            drawdown_from_high_pct
+        ),
+        "rebound_from_low_pct": (
+            rebound_from_low_pct
+        ),
         "avg_20": avg_20,
         "avg_60": avg_60,
         "avg_90": avg_90,
@@ -382,6 +501,10 @@ def _empty_result():
         "recent_change": 0,
         "velocity": "MODERATE",
         "current_time": "N/A",
+        "session_high": 0,
+        "session_low": 0,
+        "drawdown_from_high_pct": 0,
+        "rebound_from_low_pct": 0,
         "avg_20": 0,
         "avg_60": 0,
         "avg_90": 0,
