@@ -34,7 +34,7 @@ TICKERS = [
 "DUK", "DVA", "DVN", "DXCM",
 
 "EA", "EBAY", "ECL", "ED", "EFX", "EIX", "EL", "ELV", "EMR", "EOG",
-"EPAM", "EQIX", "EQR", "ES", "ESS", "ETN", "ETR", "EVRG", "EW", "EXC",
+"EPAM", "EQIX", "EQR", "ES", "ETN", "ETR", "EVRG", "EW", "EXC",
 "EXPD", "EXPE", "EXR",
 
 "F", "FANG", "FAST", "FCX", "FDS", "FDX", "FE", "FFIV", "FIS", "FISV",
