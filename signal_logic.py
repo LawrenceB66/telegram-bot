@@ -76,6 +76,18 @@ def classify_signal(
             "EXTREME": 3,
         }
 
+        downside_velocity_rank = {
+            "EXTREME": 0,
+            "ACCELERATING": 0,
+            "HIGH": 0,
+            "BUILDING": 0,
+            "STALLING": 0,
+            "MODERATE": 0,
+            "SLOWING": 1,
+            "REVERSING": 2,
+            "NEGATIVE": 3,
+        }
+
         v_rank = volume_rank.get(
             volume,
             0
@@ -84,6 +96,13 @@ def classify_signal(
         vel_rank = velocity_rank.get(
             velocity,
             0
+        )
+
+        downside_vel_rank = (
+            downside_velocity_rank.get(
+                velocity,
+                0
+            )
         )
 
         material_intraday_reversal = (
@@ -96,6 +115,9 @@ def classify_signal(
 
         # ==================================================
         # BREAKDOWN
+        #
+        # Structural failure remains the highest-priority
+        # bearish classification.
         # ==================================================
 
         path_breakdown = (
@@ -111,7 +133,10 @@ def classify_signal(
                 "BUILDING",
                 "LOADED",
                 "EXTENDED",
-                "STALL"
+                "STALL",
+                "COOLING",
+                "DOWNSIDE",
+                "DOWNSIDE_EXTENDED"
             ]
             and change_pct < 2
             and rvol >= 1.50
@@ -136,6 +161,114 @@ def classify_signal(
                 "read": (
                     "Price weakening while "
                     "participation remains elevated."
+                ),
+            }
+
+        # ==================================================
+        # PRICE COOLING
+        #
+        # Earlier bearish observation.
+        #
+        # Price has begun deteriorating from a previously
+        # constructive state, but structural failure has
+        # not yet occurred.
+        # ==================================================
+
+        if (
+            previous_state in [
+                "BUILDING",
+                "LOADED",
+                "EXTENDED",
+                "STALL"
+            ]
+            and velocity == "SLOWING"
+            and drawdown_from_high_pct < 0
+            and not material_intraday_reversal
+        ):
+            return {
+                "emoji": "⚠️",
+                "name": "Price Cooling",
+                "state": "COOLING",
+                "volume": volume.title(),
+                "driver": "PRICE",
+                "read": (
+                    "Price momentum cooling from "
+                    "earlier session strength."
+                ),
+            }
+
+        # ==================================================
+        # DOWNSIDE MOMENTUM
+        #
+        # Bearish mirror of Momentum Surge.
+        # ==================================================
+
+        if (
+            change_pct <= -10
+            and rvol >= 2.50
+            and v_rank >= 3
+            and price_activity_ratio >= 1.50
+            and downside_vel_rank >= 3
+        ):
+            return {
+                "emoji": "💥",
+                "name": "Downside Momentum",
+                "state": "DOWNSIDE_EXTENDED",
+                "volume": volume.title(),
+                "driver": "PRICE + VOLUME",
+                "read": (
+                    "Price and participation "
+                    "expanding lower together."
+                ),
+            }
+
+        # ==================================================
+        # DOWNSIDE EXPANSION — STRONG
+        #
+        # Bearish mirror of Active Expansion — Strong.
+        # ==================================================
+
+        if (
+            change_pct <= -7
+            and rvol >= 2.00
+            and v_rank >= 2
+            and price_activity_ratio >= 1.25
+            and downside_vel_rank >= 2
+        ):
+            return {
+                "emoji": "🔻",
+                "name": "Downside Expansion",
+                "state": "DOWNSIDE",
+                "volume": volume.title(),
+                "driver": "PRICE + VOLUME",
+                "read": (
+                    "Price activity expanding lower "
+                    "with elevated participation."
+                ),
+            }
+
+        # ==================================================
+        # DOWNSIDE EXPANSION — BUILDING
+        #
+        # Bearish mirror of Active Expansion — Building.
+        # ==================================================
+
+        if (
+            change_pct <= -5
+            and rvol >= 1.50
+            and v_rank >= 1
+            and price_activity_ratio >= 1.00
+            and downside_vel_rank >= 1
+        ):
+            return {
+                "emoji": "🔻",
+                "name": "Downside Expansion",
+                "state": "DOWNSIDE",
+                "volume": volume.title(),
+                "driver": "PRICE + VOLUME",
+                "read": (
+                    "Price activity expanding lower "
+                    "with elevated participation."
                 ),
             }
 
