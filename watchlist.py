@@ -9,11 +9,11 @@
 
 TICKERS = [ 
 
-"A", "AAPL", "AAON", "ABNB", "ABT", "ACN", "ADBE", "ADI", "ADM", "ADP", 
+"A", "AAPL", "ABNB", "ABT", "ACN", "ADBE", "ADI", "ADM", "ADP", 
 "ADSK", "AEE", "AEP", "AES", "AFL", "AFRM", "AGCO", "AGL", "AGNC", "AGO", 
 "AIG", "AIZ", "AJG", "AKAM", "AL", "ALB", "ALGN", "ALGM", "ALK", "ALL", 
 "ALLE", "ALLY", "ALNY", "AM", "AMAT", "AMCR", "AMD", "AME", "AMGN", "AMP", 
-"AMT", "AMZN", "ANET", "AON", "AOS", "APA", "APD", "APH", "APO", "APP", 
+"AMT", "AMZN", "ANET", "AOS", "APA", "APD", "APH", "APO", "APP", 
 "APPF", "APTV", "ARE", "ARES", "ATO", "ATR", "AVB", "AVGO", "AVTR", "AVY", 
 "AWK", "AXON", "AXP", "AZO",
 
@@ -33,7 +33,7 @@ TICKERS = [
 "DHR", "DIS", "DLR", "DLTR", "DOCU", "DOV", "DOW", "DPZ", "DRI", "DTE",
 "DUK", "DVA", "DVN", "DXCM",
 
-"EA", "EBAY", "ECL", "ED", "EFX", "EIX", "EL", "ELV", "EMR", "EOG",
+"EA", "EBAY", "ECL", "ED", "EFX", "EL", "ELV", "EMR", "EOG",
 "EPAM", "EQIX", "EQR", "ES", "ETN", "ETR", "EVRG", "EW", "EXC",
 "EXPD", "EXPE", "EXR",
 
@@ -66,10 +66,10 @@ TICKERS = [
 "NCLH", "NDAQ", "NEE", "NEM", "NFLX", "NI", "NKE", "NOC", "NOW", "NRG",
 "NSC", "NTAP", "NTRS", "NUE", "NVDA", "NVR", "NXPI",
 
-"O", "ODFL", "OKE", "OKTA", "OMC", "ON", "ORCL", "ORLY", "OTIS", "OXY",
+"O", "OKE", "OKTA", "OMC", "ON", "ORCL", "ORLY", "OTIS", "OXY",
 
 "PANW", "PAYC", "PAYX", "PCAR", "PCG", "PEG", "PEP", "PFE", "PFG", "PG",
-"PGR", "PH", "PHM", "PKG", "PLD", "PLTR", "PM", "PNC", "PNR", "PNW",
+"PGR", "PH", "PHM", "PKG", "PLD", "PLTR", "PM", "PNC", "PNW",
 "PODD", "POOL", "PPG", "PPL", "PRU", "PSA", "PSX", "PTC", "PWR", "PYPL",
 
 "QCOM", "QRVO", "QQQ",
