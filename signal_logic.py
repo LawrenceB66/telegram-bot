@@ -113,16 +113,29 @@ def classify_signal(
             rebound_from_low_pct <= 2
         )
 
+        active_deterioration = (
+            velocity in [
+                "REVERSING",
+                "NEGATIVE"
+            ]
+        )
+
         # ==================================================
         # BREAKDOWN
         #
-        # Structural failure remains the highest-priority
-        # bearish classification.
+        # Structural failure requires both:
+        #
+        # 1. Material session damage.
+        # 2. Present-tense price deterioration.
+        #
+        # Remaining near a session low after an earlier
+        # decline is not sufficient by itself.
         # ==================================================
 
         path_breakdown = (
             material_intraday_reversal
             and near_session_low
+            and active_deterioration
             and rvol >= 1.50
             and v_rank >= 1
             and price_activity_ratio >= 1.00
@@ -142,10 +155,7 @@ def classify_signal(
             and rvol >= 1.50
             and v_rank >= 1
             and price_activity_ratio >= 1.00
-            and velocity in [
-                "REVERSING",
-                "NEGATIVE"
-            ]
+            and active_deterioration
         )
 
         if (
@@ -166,12 +176,6 @@ def classify_signal(
 
         # ==================================================
         # PRICE COOLING
-        #
-        # Earlier bearish observation.
-        #
-        # Price has begun deteriorating from a previously
-        # constructive state, but structural failure has
-        # not yet occurred.
         # ==================================================
 
         if (
@@ -199,8 +203,6 @@ def classify_signal(
 
         # ==================================================
         # DOWNSIDE MOMENTUM
-        #
-        # Bearish mirror of Momentum Surge.
         # ==================================================
 
         if (
@@ -224,8 +226,6 @@ def classify_signal(
 
         # ==================================================
         # DOWNSIDE EXPANSION — STRONG
-        #
-        # Bearish mirror of Active Expansion — Strong.
         # ==================================================
 
         if (
@@ -249,8 +249,6 @@ def classify_signal(
 
         # ==================================================
         # DOWNSIDE EXPANSION — BUILDING
-        #
-        # Bearish mirror of Active Expansion — Building.
         # ==================================================
 
         if (
