@@ -1,5 +1,5 @@
-PRICE_LOOKBACKS = (20, 60, 90, 120)
-MAX_PRICE_LOOKBACK = 120
+PRICE_LOOKBACKS = (20, 60, 120, 200)
+MAX_PRICE_LOOKBACK = 200
 
 
 def calculate_price_activity(
@@ -14,8 +14,8 @@ def calculate_price_activity(
 
     Normalized price activity uses the latest completed
     5-minute bar and compares it with historical price
-    activity at the same clock time across 20, 60, 90,
-    and 120 prior trading sessions.
+    activity at the same clock time across 20, 60, 120,
+    and 200 prior trading sessions.
 
     Intraday path tracks current-session price location
     relative to the developing session high and low.
@@ -41,8 +41,6 @@ def calculate_price_activity(
 
     # ==================================================
     # REAL-TIME DIRECTIONAL PRICE CHANGE
-    #
-    # Current live price versus prior-session close.
     # ==================================================
 
     change_pct = (
@@ -52,12 +50,6 @@ def calculate_price_activity(
 
     # ==================================================
     # SAME-TIME PRICE ACTIVITY
-    #
-    # Magnitude measurement only.
-    #
-    # Uses the latest completed 5-minute bar so today's
-    # normalized price activity is aligned with the same
-    # historical 5-minute clock time.
     # ==================================================
 
     current_price_activity = abs(
@@ -122,15 +114,6 @@ def calculate_price_activity(
 
     # ==================================================
     # HISTORICAL SAME-TIME PRICE ACTIVITY
-    #
-    # For each prior session:
-    #
-    # same-time price
-    # versus
-    # previous trading session close
-    #
-    # 120 observations require at least 121
-    # prior trading sessions.
     # ==================================================
 
     historical_price_activity = []
@@ -198,9 +181,6 @@ def calculate_price_activity(
 
     # ==================================================
     # FAIL CLOSED
-    #
-    # A true 20/60/90/120 composite requires
-    # all 120 historical price observations.
     # ==================================================
 
     if (
@@ -209,8 +189,8 @@ def calculate_price_activity(
     ):
         avg_20 = 0
         avg_60 = 0
-        avg_90 = 0
         avg_120 = 0
+        avg_200 = 0
 
         composite_price_baseline = 0
 
@@ -232,18 +212,18 @@ def calculate_price_activity(
             / 60
         )
 
-        avg_90 = (
-            sum(
-                historical_price_activity[:90]
-            )
-            / 90
-        )
-
         avg_120 = (
             sum(
                 historical_price_activity[:120]
             )
             / 120
+        )
+
+        avg_200 = (
+            sum(
+                historical_price_activity[:200]
+            )
+            / 200
         )
 
         # ==================================================
@@ -253,15 +233,15 @@ def calculate_price_activity(
         #
         # 20D  = 25%
         # 60D  = 25%
-        # 90D  = 25%
         # 120D = 25%
+        # 200D = 25%
         # ==================================================
 
         composite_price_baseline = (
             avg_20
             + avg_60
-            + avg_90
             + avg_120
+            + avg_200
         ) / 4
 
         price_activity_ratio = (
@@ -299,12 +279,6 @@ def calculate_price_activity(
 
     # ==================================================
     # INTRADAY PRICE PATH
-    #
-    # Tracks price location relative to the developing
-    # current-session high and low.
-    #
-    # This is independent from change_pct, which remains
-    # anchored to the prior-session close.
     # ==================================================
 
     if current_session_bars:
@@ -358,11 +332,6 @@ def calculate_price_activity(
 
     # ==================================================
     # RECENT PRICE MOVEMENT
-    #
-    # Uses current-session completed 5-minute bars only.
-    #
-    # Four closes represents approximately 15 minutes
-    # between the reference close and latest close.
     # ==================================================
 
     if len(current_session_closes) >= 4:
@@ -387,13 +356,16 @@ def calculate_price_activity(
 
     # ==================================================
     # VELOCITY CLASSIFICATION
-    #
-    # Immediate reversal takes precedence over the
-    # broader extended-price stall condition.
     # ==================================================
 
-    if recent_change <= -0.5:
+    if recent_change <= -1.00:
+        velocity = "NEGATIVE"
+
+    elif recent_change <= -0.50:
         velocity = "REVERSING"
+
+    elif recent_change <= -0.20:
+        velocity = "SLOWING"
 
     elif (
         change_pct >= 10
@@ -401,13 +373,13 @@ def calculate_price_activity(
     ):
         velocity = "STALLING"
 
-    elif recent_change >= 1:
+    elif recent_change >= 1.00:
         velocity = "EXTREME"
 
-    elif recent_change >= 0.5:
+    elif recent_change >= 0.50:
         velocity = "ACCELERATING"
 
-    elif recent_change >= 0.2:
+    elif recent_change >= 0.20:
         velocity = "HIGH"
 
     elif recent_change >= 0:
@@ -427,8 +399,8 @@ def calculate_price_activity(
         f"BAR ACTIVITY {current_price_activity:.2f}% | "
         f"20D {avg_20:.2f}% | "
         f"60D {avg_60:.2f}% | "
-        f"90D {avg_90:.2f}% | "
         f"120D {avg_120:.2f}% | "
+        f"200D {avg_200:.2f}% | "
         f"COMPOSITE "
         f"{composite_price_baseline:.2f}% | "
         f"RATIO {price_activity_ratio:.2f}x | "
@@ -466,8 +438,8 @@ def calculate_price_activity(
         ),
         "avg_20": avg_20,
         "avg_60": avg_60,
-        "avg_90": avg_90,
         "avg_120": avg_120,
+        "avg_200": avg_200,
         "composite_price_baseline": (
             composite_price_baseline
         ),
@@ -507,8 +479,8 @@ def _empty_result():
         "rebound_from_low_pct": 0,
         "avg_20": 0,
         "avg_60": 0,
-        "avg_90": 0,
         "avg_120": 0,
+        "avg_200": 0,
         "composite_price_baseline": 0,
         "comparable_sessions": 0,
     }
