@@ -1,3 +1,4 @@
+
 import json
 import os
 from datetime import date
@@ -162,6 +163,21 @@ def _signal_family(
     )
 
     if name:
+        if "DOWNSIDE MOMENTUM" in name:
+            return "DOWNSIDE_MOMENTUM"
+
+        if "DOWNSIDE EXPANSION" in name:
+            return "DOWNSIDE_EXPANSION"
+
+        if "PRICE COOLING" in name:
+            return "COOLING"
+
+        if "PRICE STALL" in name:
+            return "STALL"
+
+        if "BREAKDOWN" in name:
+            return "BREAKDOWN"
+
         if "MOMENTUM SURGE" in name:
             return "MOMENTUM"
 
@@ -173,9 +189,6 @@ def _signal_family(
 
         if "EXHAUSTION" in name:
             return "EXHAUSTION"
-
-        if "BREAKDOWN" in name:
-            return "BREAKDOWN"
 
     state_name = (
         str(state).strip().upper()
@@ -192,12 +205,23 @@ def _signal_family(
     if state_name == "EXTENDED":
         return "MOMENTUM"
 
+    if state_name == "STALL":
+        return "STALL"
+
+    if state_name == "COOLING":
+        return "COOLING"
+
+    if state_name == "DOWNSIDE":
+        return "DOWNSIDE_EXPANSION"
+
+    if state_name == "DOWNSIDE_EXTENDED":
+        return "DOWNSIDE_MOMENTUM"
+
     if state_name == "EXHAUSTION":
         return "EXHAUSTION"
 
     if state_name in {
         "FAILURE",
-        "DOWNSIDE",
         "BREAKDOWN",
     }:
         return "BREAKDOWN"
@@ -216,6 +240,10 @@ def _material_signal_change(
     ):
         return False
 
+    # ==================================================
+    # STRUCTURAL FAILURE
+    # ==================================================
+
     if new_family == "BREAKDOWN":
         return True
 
@@ -225,8 +253,49 @@ def _material_signal_change(
     ):
         return True
 
-    if new_family == "EXHAUSTION":
+    # ==================================================
+    # BEARISH DETERIORATION
+    # ==================================================
+
+    if (
+        new_family == "COOLING"
+        and last_family in {
+            "PRESSURE",
+            "EXPANSION",
+            "MOMENTUM",
+            "STALL",
+        }
+    ):
         return True
+
+    if (
+        new_family == "DOWNSIDE_EXPANSION"
+        and last_family in {
+            "PRESSURE",
+            "EXPANSION",
+            "MOMENTUM",
+            "STALL",
+            "COOLING",
+        }
+    ):
+        return True
+
+    if (
+        new_family == "DOWNSIDE_MOMENTUM"
+        and last_family in {
+            "PRESSURE",
+            "EXPANSION",
+            "MOMENTUM",
+            "STALL",
+            "COOLING",
+            "DOWNSIDE_EXPANSION",
+        }
+    ):
+        return True
+
+    # ==================================================
+    # BULLISH PROGRESSION
+    # ==================================================
 
     if (
         last_family == "PRESSURE"
@@ -244,6 +313,13 @@ def _material_signal_change(
             "EXPANSION",
         }
     ):
+        return True
+
+    # ==================================================
+    # LEGACY EXHAUSTION
+    # ==================================================
+
+    if new_family == "EXHAUSTION":
         return True
 
     return False
@@ -509,6 +585,9 @@ def should_alert(
 
     # ==================================================
     # BASELINE
+    #
+    # Baseline does not terminate an intraday event.
+    # Session boundary closes the live event.
     # ==================================================
 
     if new_state == "BASELINE":
