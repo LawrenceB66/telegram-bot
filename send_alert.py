@@ -30,9 +30,11 @@ def _alert_descriptor(signal_name):
     if not signal_name:
         return ""
 
-    name = str(
+    raw_name = str(
         signal_name
-    ).strip().upper()
+    ).strip()
+
+    name = raw_name.upper()
 
     # ==================================================
     # BEARISH / DETERIORATION
@@ -73,7 +75,13 @@ def _alert_descriptor(signal_name):
     if "EXHAUSTION" in name:
         return "Exhaustion"
 
-    return ""
+    # ==================================================
+    # SAFE FALLBACK
+    #
+    # Never silently erase an unknown signal name.
+    # ==================================================
+
+    return raw_name
 
 
 def send_alert(
@@ -87,13 +95,15 @@ def send_alert(
     try:
         if signal is None:
             print(
-                f"SKIPPING — SIGNAL IS NONE: {symbol}"
+                f"SKIPPING — SIGNAL IS NONE: "
+                f"{symbol}"
             )
             return
 
         if not BOT_TOKEN or not CHAT_ID:
             print(
-                "ERROR: Missing TELEGRAM_TOKEN or CHAT_ID"
+                "ERROR: Missing "
+                "TELEGRAM_TOKEN or CHAT_ID"
             )
             return
 
@@ -140,28 +150,35 @@ def send_alert(
         # ALERT DISPLAY
         # ==================================================
 
-        descriptor = _alert_descriptor(
-            name
+        descriptor = (
+            _alert_descriptor(
+                name
+            )
         )
 
         if descriptor:
             alert_line = (
                 f"{emoji} "
                 f"{descriptor} • "
-                f"{_ordinal(alert_count)} Alert"
+                f"{_ordinal(alert_count)} "
+                f"Alert"
             ).strip()
 
         else:
             alert_line = (
                 f"{emoji} "
-                f"{_ordinal(alert_count)} Alert"
+                f"{_ordinal(alert_count)} "
+                f"Alert"
             ).strip()
 
         # ==================================================
         # VOLUME DISPLAY
         # ==================================================
 
-        if participation_pct is not None:
+        if (
+            participation_pct
+            is not None
+        ):
             participation_str = (
                 f"{float(participation_pct):+.0f}%"
             )
@@ -178,7 +195,9 @@ def send_alert(
             )
 
         else:
-            volume_line = volume
+            volume_line = (
+                str(volume)
+            )
 
         # ==================================================
         # TELEGRAM MESSAGE
@@ -199,6 +218,10 @@ def send_alert(
                 f"\n"
                 f"Notes: {notes}"
             )
+
+        # ==================================================
+        # TELEGRAM DELIVERY
+        # ==================================================
 
         url = (
             f"https://api.telegram.org/"
