@@ -1,26 +1,43 @@
 import io
 from contextlib import redirect_stdout
 
-from rvol_engine import calculate_rvol
-from price_engine import calculate_price_activity
-from signal_logic import classify_signal
-from state_engine import (
-    _signal_family,
-    _material_signal_change,
-    _material_driver_change,
+from rvol_engine import (
+    calculate_rvol,
+    MAX_RVOL_LOOKBACK,
 )
+from price_engine import (
+    calculate_price_activity,
+    MAX_PRICE_LOOKBACK,
+)
+from signal_logic import classify_signal
 
 
-REPEAT_ALERT_MOVE_PCT = 5.0
 RECONSTRUCTION_SESSIONS = 5
+
+MIN_RECONSTRUCTION_SESSIONS = (
+    max(
+        MAX_RVOL_LOOKBACK,
+        MAX_PRICE_LOOKBACK,
+    )
+    + RECONSTRUCTION_SESSIONS
+    + 1
+)
 
 
 def _group_sessions(bars):
     sessions = {}
 
     for bar in bars:
-        session_date = bar["timestamp"].split(" ")[0]
-        sessions.setdefault(session_date, []).append(bar)
+        session_date = (
+            bar["timestamp"].split(" ")[0]
+        )
+
+        sessions.setdefault(
+            session_date,
+            []
+        ).append(
+            bar
+        )
 
     for session_date in sessions:
         sessions[session_date].sort(
@@ -46,9 +63,9 @@ def _previous_close(
     if index <= 0:
         return None
 
-    previous_date = session_dates[
-        index - 1
-    ]
+    previous_date = (
+        session_dates[index - 1]
+    )
 
     previous_session = sessions.get(
         previous_date,
@@ -63,23 +80,70 @@ def _previous_close(
     )
 
 
-def _new_event(
+def _historical_context(
     state,
     trading_date,
+    timestamp,
     price,
     change_pct,
     rvol,
     price_activity_ratio,
     signal_name,
     driver,
-    signal_family,
+    drawdown_from_high_pct,
+    rebound_from_low_pct,
 ):
+    """
+    Historical reconstruction is context only.
+
+    It must never become live-session state and must
+    never carry historical alert numbering into the
+    current trading session.
+    """
+
     return {
-        "state": state,
-        "event_start_date": trading_date,
-        "event_start_price": price,
+        # ==================================================
+        # LIVE STATE IS INTENTIONALLY EMPTY
+        # ==================================================
+
+        "state": None,
+
+        # ==================================================
+        # HISTORICAL CONTEXT
+        # ==================================================
+
+        "historical_state": state,
+        "historical_date": trading_date,
+        "historical_timestamp": timestamp,
+        "historical_price": price,
+        "historical_change_pct": change_pct,
+        "historical_rvol": rvol,
+        "historical_price_activity_ratio": (
+            price_activity_ratio
+        ),
+        "historical_signal_name": signal_name,
+        "historical_driver": driver,
+        "historical_drawdown_from_high_pct": (
+            drawdown_from_high_pct
+        ),
+        "historical_rebound_from_low_pct": (
+            rebound_from_low_pct
+        ),
+
+        # ==================================================
+        # STATE ENGINE COMPATIBILITY
+        #
+        # Dates remain historical so state_engine.py can
+        # recognize and close the prior-session context
+        # before creating the current live event.
+        # ==================================================
+
+        "event_start_date": None,
+        "event_start_price": None,
+
         "last_alert_date": trading_date,
         "last_alert_price": price,
+
         "latest_date": trading_date,
         "latest_price": price,
         "latest_change_pct": change_pct,
@@ -87,210 +151,31 @@ def _new_event(
         "latest_price_activity_ratio": (
             price_activity_ratio
         ),
+
         "latest_signal_name": signal_name,
         "latest_driver": driver,
-        "latest_signal_family": signal_family,
+        "latest_signal_family": None,
+
         "last_alert_signal_name": signal_name,
         "last_alert_driver": driver,
-        "last_alert_signal_family": signal_family,
-        "alert_count": 1,
+        "last_alert_signal_family": None,
+
+        # ==================================================
+        # ALERT NUMBERING NEVER RECONSTRUCTED
+        # ==================================================
+
+        "alert_count": 0,
         "continuation_count": 0,
+
+        "baseline_count": 0,
+        "last_baseline_timestamp": None,
+
         "last_event_type": (
-            "RECONSTRUCTED_NEW_EVENT"
+            "HISTORICAL_CONTEXT"
         ),
+
         "last_move_from_alert_pct": 0,
     }
-
-
-def _apply_observation(
-    event,
-    state,
-    trading_date,
-    price,
-    change_pct,
-    rvol,
-    price_activity_ratio,
-    signal_name,
-    driver,
-    signal_family,
-):
-    if event is None:
-        return _new_event(
-            state=state,
-            trading_date=trading_date,
-            price=price,
-            change_pct=change_pct,
-            rvol=rvol,
-            price_activity_ratio=(
-                price_activity_ratio
-            ),
-            signal_name=signal_name,
-            driver=driver,
-            signal_family=signal_family,
-        )
-
-    last_alert_date = event.get(
-        "last_alert_date"
-    )
-
-    last_alert_price = event.get(
-        "last_alert_price"
-    )
-
-    last_alert_family = event.get(
-        "last_alert_signal_family"
-    )
-
-    if not last_alert_family:
-        last_alert_family = _signal_family(
-            signal_name=event.get(
-                "last_alert_signal_name"
-            ),
-            state=event.get("state"),
-        )
-
-    last_alert_driver = event.get(
-        "last_alert_driver"
-    )
-
-    move_from_last_alert_pct = 0
-
-    if (
-        last_alert_price is not None
-        and float(last_alert_price) != 0
-    ):
-        move_from_last_alert_pct = (
-            (
-                float(price)
-                - float(last_alert_price)
-            )
-            / float(last_alert_price)
-        ) * 100
-
-    material_move = (
-        abs(move_from_last_alert_pct)
-        >= REPEAT_ALERT_MOVE_PCT
-    )
-
-    material_signal_change = (
-        _material_signal_change(
-            last_family=last_alert_family,
-            new_family=signal_family,
-        )
-    )
-
-    material_driver_change = (
-        _material_driver_change(
-            last_driver=last_alert_driver,
-            new_driver=driver,
-        )
-    )
-
-    new_session = (
-        last_alert_date != trading_date
-    )
-
-    event.update(
-        {
-            "state": state,
-            "latest_date": trading_date,
-            "latest_price": price,
-            "latest_change_pct": change_pct,
-            "latest_rvol": rvol,
-            "latest_price_activity_ratio": (
-                price_activity_ratio
-            ),
-            "latest_signal_name": signal_name,
-            "latest_driver": driver,
-            "latest_signal_family": (
-                signal_family
-            ),
-            "last_move_from_alert_pct": (
-                move_from_last_alert_pct
-            ),
-        }
-    )
-
-    if not (
-        material_signal_change
-        or material_driver_change
-        or material_move
-    ):
-        event[
-            "last_event_type"
-        ] = "RECONSTRUCTED_SUPPRESSED"
-
-        return event
-
-    alert_count = int(
-        event.get(
-            "alert_count",
-            1
-        )
-    ) + 1
-
-    continuation_count = int(
-        event.get(
-            "continuation_count",
-            0
-        )
-    )
-
-    if new_session:
-        continuation_count += 1
-
-    if material_signal_change:
-        if new_session:
-            event_type = (
-                "RECONSTRUCTED_"
-                "CONTINUATION_SIGNAL_CHANGE"
-            )
-        else:
-            event_type = (
-                "RECONSTRUCTED_SIGNAL_CHANGE"
-            )
-
-    elif material_driver_change:
-        if new_session:
-            event_type = (
-                "RECONSTRUCTED_"
-                "CONTINUATION_DRIVER_CHANGE"
-            )
-        else:
-            event_type = (
-                "RECONSTRUCTED_DRIVER_CHANGE"
-            )
-
-    else:
-        if new_session:
-            event_type = (
-                "RECONSTRUCTED_CONTINUATION"
-            )
-        else:
-            event_type = (
-                "RECONSTRUCTED_REPEAT"
-            )
-
-    event.update(
-        {
-            "last_alert_date": trading_date,
-            "last_alert_price": price,
-            "last_alert_signal_name": (
-                signal_name
-            ),
-            "last_alert_driver": driver,
-            "last_alert_signal_family": (
-                signal_family
-            ),
-            "alert_count": alert_count,
-            "continuation_count": (
-                continuation_count
-            ),
-            "last_event_type": event_type,
-        }
-    )
-
-    return event
 
 
 def reconstruct_event_memory(
@@ -298,16 +183,23 @@ def reconstruct_event_memory(
     exclude_latest=True
 ):
     """
-    Rebuild recent event memory from historical
-    market observations.
+    Reconstruct recent historical market context.
 
-    Reconstruction uses the same metric and
-    classification engines as the live scanner,
-    but suppresses their normal diagnostic output.
+    Historical reconstruction uses the same RVOL,
+    Price Engine, and Signal Logic calculations as
+    the live scanner.
 
-    When exclude_latest is True, the entire most
-    recent trading session is excluded so live
-    observations are not reconstructed as history.
+    Reconstruction is deliberately separated from
+    live-session state:
+
+    • historical alert counts are never restored
+    • previous_state resets at every session boundary
+    • the latest historical classification is stored
+      as context only
+    • live state remains None
+
+    When exclude_latest is True, the complete latest
+    trading session is excluded from reconstruction.
     """
 
     if not bars:
@@ -319,15 +211,19 @@ def reconstruct_event_memory(
     )
 
     if exclude_latest:
-        latest_date = ordered_bars[
-            -1
-        ]["timestamp"].split(" ")[0]
+        latest_date = (
+            ordered_bars[-1][
+                "timestamp"
+            ].split(" ")[0]
+        )
 
         working_bars = [
             bar
             for bar in ordered_bars
-            if bar["timestamp"].split(" ")[0]
-            < latest_date
+            if (
+                bar["timestamp"].split(" ")[0]
+                < latest_date
+            )
         ]
 
     else:
@@ -346,15 +242,29 @@ def reconstruct_event_memory(
         sessions.keys()
     )
 
-    if len(session_dates) < 122:
+    # ==================================================
+    # 200D RECONSTRUCTION REQUIREMENT
+    #
+    # Earliest reconstructed session requires:
+    #
+    # 200 prior same-time observations
+    # + preceding session close
+    # + reconstruction window
+    # ==================================================
+
+    if (
+        len(session_dates)
+        < MIN_RECONSTRUCTION_SESSIONS
+    ):
         return None
 
-    target_dates = session_dates[
-        -RECONSTRUCTION_SESSIONS:
-    ]
+    target_dates = (
+        session_dates[
+            -RECONSTRUCTION_SESSIONS:
+        ]
+    )
 
-    event = None
-    previous_state = None
+    historical_context = None
 
     all_bars = []
 
@@ -363,7 +273,10 @@ def reconstruct_event_memory(
             session_date
         ]
 
-        if session_date not in target_dates:
+        if (
+            session_date
+            not in target_dates
+        ):
             all_bars.extend(
                 session_bars
             )
@@ -384,6 +297,15 @@ def reconstruct_event_memory(
             )
             continue
 
+        # ==================================================
+        # SESSION-SCOPED CLASSIFICATION MEMORY
+        #
+        # Historical state never crosses a session
+        # boundary.
+        # ==================================================
+
+        previous_state = None
+
         for bar in session_bars:
             all_bars.append(
                 bar
@@ -393,14 +315,18 @@ def reconstruct_event_memory(
                 with redirect_stdout(
                     io.StringIO()
                 ):
-                    rvol_data = calculate_rvol(
-                        all_bars
+                    rvol_data = (
+                        calculate_rvol(
+                            all_bars
+                        )
                     )
 
                     price_data = (
                         calculate_price_activity(
                             bars=all_bars,
-                            current_price=bar["close"],
+                            current_price=float(
+                                bar["close"]
+                            ),
                             previous_close=(
                                 previous_close
                             ),
@@ -410,36 +336,85 @@ def reconstruct_event_memory(
             except Exception:
                 continue
 
-            signal = classify_signal(
-                price=bar["close"],
-                change_pct=price_data[
+            change_pct = float(
+                price_data[
                     "change_pct"
-                ],
+                ]
+            )
+
+            rvol = float(
+                rvol_data[
+                    "rvol"
+                ]
+            )
+
+            price_activity_ratio = float(
+                price_data[
+                    "price_activity_ratio"
+                ]
+            )
+
+            recent_change = float(
+                price_data[
+                    "recent_change"
+                ]
+            )
+
+            drawdown_from_high_pct = float(
+                price_data[
+                    "drawdown_from_high_pct"
+                ]
+            )
+
+            rebound_from_low_pct = float(
+                price_data[
+                    "rebound_from_low_pct"
+                ]
+            )
+
+            signal = classify_signal(
+                price=float(
+                    bar["close"]
+                ),
+                change_pct=change_pct,
                 volume=rvol_data[
                     "volume"
                 ],
                 velocity=price_data[
                     "velocity"
                 ],
-                previous_state=previous_state,
-                rvol=rvol_data[
-                    "rvol"
-                ],
-                participation_pct=rvol_data[
-                    "participation_pct"
-                ],
-                recent_change=price_data[
-                    "recent_change"
-                ],
-                price_activity_ratio=price_data[
-                    "price_activity_ratio"
-                ],
+                previous_state=(
+                    previous_state
+                ),
+                rvol=rvol,
+                participation_pct=float(
+                    rvol_data[
+                        "participation_pct"
+                    ]
+                ),
+                recent_change=(
+                    recent_change
+                ),
+                price_activity_ratio=(
+                    price_activity_ratio
+                ),
+                drawdown_from_high_pct=(
+                    drawdown_from_high_pct
+                ),
+                rebound_from_low_pct=(
+                    rebound_from_low_pct
+                ),
             )
 
             state = signal.get(
                 "state",
                 "BASELINE"
             )
+
+            # ==================================================
+            # BASELINE DOES NOT ERASE HISTORICAL
+            # SESSION CONTEXT
+            # ==================================================
 
             if state == "BASELINE":
                 continue
@@ -452,38 +427,50 @@ def reconstruct_event_memory(
                 "driver"
             )
 
-            signal_family = _signal_family(
-                signal_name=signal_name,
-                state=state,
-            )
-
-            event = _apply_observation(
-                event=event,
-                state=state,
-                trading_date=session_date,
-                price=float(
-                    bar["close"]
-                ),
-                change_pct=float(
-                    price_data[
-                        "change_pct"
-                    ]
-                ),
-                rvol=float(
-                    rvol_data[
-                        "rvol"
-                    ]
-                ),
-                price_activity_ratio=float(
-                    price_data[
-                        "price_activity_ratio"
-                    ]
-                ),
-                signal_name=signal_name,
-                driver=driver,
-                signal_family=signal_family,
-            )
+            # ==================================================
+            # PRESERVE STATE ONLY INSIDE THIS
+            # HISTORICAL SESSION
+            # ==================================================
 
             previous_state = state
 
-    return event
+            # ==================================================
+            # STORE LATEST QUALIFYING HISTORICAL
+            # OBSERVATION
+            #
+            # No historical alert count is inferred.
+            # ==================================================
+
+            historical_context = (
+                _historical_context(
+                    state=state,
+                    trading_date=(
+                        session_date
+                    ),
+                    timestamp=bar[
+                        "timestamp"
+                    ],
+                    price=float(
+                        bar["close"]
+                    ),
+                    change_pct=(
+                        change_pct
+                    ),
+                    rvol=rvol,
+                    price_activity_ratio=(
+                        price_activity_ratio
+                    ),
+                    signal_name=(
+                        signal_name
+                    ),
+                    driver=driver,
+                    drawdown_from_high_pct=(
+                        drawdown_from_high_pct
+                    ),
+                    rebound_from_low_pct=(
+                        rebound_from_low_pct
+                    ),
+                )
+            )
+
+    return historical_context
