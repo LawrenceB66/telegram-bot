@@ -105,6 +105,10 @@ def classify_signal(
             )
         )
 
+        # ==================================================
+        # SESSION PATH
+        # ==================================================
+
         material_intraday_reversal = (
             drawdown_from_high_pct <= -5
         )
@@ -120,19 +124,29 @@ def classify_signal(
             ]
         )
 
+        cooling_deterioration = (
+            velocity in [
+                "SLOWING",
+                "REVERSING",
+                "NEGATIVE"
+            ]
+        )
+
         # ==================================================
         # BREAKDOWN
         #
-        # Structural failure requires both:
+        # Structural failure requires:
         #
-        # 1. Material session damage.
-        # 2. Present-tense price deterioration.
+        # • material drawdown from session high
+        # • price still near session low
+        # • active present-tense deterioration
+        # • elevated participation
+        # • abnormal price activity
         #
-        # Remaining near a session low after an earlier
-        # decline is not sufficient by itself.
+        # Prior state alone cannot create Breakdown.
         # ==================================================
 
-        path_breakdown = (
+        breakdown = (
             material_intraday_reversal
             and near_session_low
             and active_deterioration
@@ -141,27 +155,7 @@ def classify_signal(
             and price_activity_ratio >= 1.00
         )
 
-        state_breakdown = (
-            previous_state in [
-                "BUILDING",
-                "LOADED",
-                "EXTENDED",
-                "STALL",
-                "COOLING",
-                "DOWNSIDE",
-                "DOWNSIDE_EXTENDED"
-            ]
-            and change_pct < 2
-            and rvol >= 1.50
-            and v_rank >= 1
-            and price_activity_ratio >= 1.00
-            and active_deterioration
-        )
-
-        if (
-            path_breakdown
-            or state_breakdown
-        ):
+        if breakdown:
             return {
                 "emoji": "🔻",
                 "name": "Breakdown",
@@ -176,6 +170,17 @@ def classify_signal(
 
         # ==================================================
         # PRICE COOLING
+        #
+        # Earlier deterioration from a constructive state.
+        #
+        # Cooling may progress through:
+        #
+        # SLOWING
+        # REVERSING
+        # NEGATIVE
+        #
+        # without being mislabeled Breakdown before
+        # structural failure actually exists.
         # ==================================================
 
         if (
@@ -185,7 +190,7 @@ def classify_signal(
                 "EXTENDED",
                 "STALL"
             ]
-            and velocity == "SLOWING"
+            and cooling_deterioration
             and drawdown_from_high_pct < 0
             and not material_intraday_reversal
         ):
@@ -375,6 +380,12 @@ def classify_signal(
 
         # ==================================================
         # PRESSURE BUILDING
+        #
+        # Direction-neutral discovery.
+        #
+        # Extreme participation with contained price
+        # activity matters whether immediate drift is
+        # slightly positive or slightly negative.
         # ==================================================
 
         if (
@@ -382,7 +393,6 @@ def classify_signal(
             and rvol >= 3.00
             and v_rank >= 4
             and 0 < price_activity_ratio <= 1.00
-            and recent_change >= 0
             and not material_intraday_reversal
         ):
             return {
