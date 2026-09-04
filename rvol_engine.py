@@ -1,11 +1,11 @@
-RVOL_LOOKBACKS = (20, 60, 90, 120)
-MAX_RVOL_LOOKBACK = 120
+RVOL_LOOKBACKS = (20, 60, 120, 200)
+MAX_RVOL_LOOKBACK = 200
 
 
 def calculate_rvol(bars):
     """
     Calculate IAL Composite RVOL using cumulative same-time volume
-    across 20, 60, 90, and 120 prior trading sessions.
+    across 20, 60, 120, and 200 prior trading sessions.
     """
 
     if not bars:
@@ -17,8 +17,8 @@ def calculate_rvol(bars):
             "current_cumulative_volume": 0,
             "avg_20": 0,
             "avg_60": 0,
-            "avg_90": 0,
             "avg_120": 0,
+            "avg_200": 0,
             "composite_average": 0,
             "comparable_sessions": 0,
         }
@@ -28,6 +28,10 @@ def calculate_rvol(bars):
 
     current_date = current_timestamp.split(" ")[0]
     current_time = current_timestamp.split(" ")[1][:5]
+
+    # ==================================================
+    # GROUP BARS BY TRADING SESSION
+    # ==================================================
 
     sessions = {}
 
@@ -47,11 +51,19 @@ def calculate_rvol(bars):
             }
         )
 
+    # ==================================================
+    # CURRENT SAME-TIME CUMULATIVE VOLUME
+    # ==================================================
+
     current_cumulative_volume = 0
 
     for bar in sessions.get(current_date, []):
         if bar["time"] <= current_time:
             current_cumulative_volume += bar["volume"]
+
+    # ==================================================
+    # HISTORICAL SAME-TIME CUMULATIVE VOLUME
+    # ==================================================
 
     historical_session_dates = sorted(
         [
@@ -76,15 +88,26 @@ def calculate_rvol(bars):
                 cumulative_volume
             )
 
+        if (
+            len(historical_cumulative_volumes)
+            >= MAX_RVOL_LOOKBACK
+        ):
+            break
+
     comparable_sessions = len(
         historical_cumulative_volumes
     )
 
+    # ==================================================
+    # FAIL CLOSED
+    # ==================================================
+
     if comparable_sessions < MAX_RVOL_LOOKBACK:
         avg_20 = 0
         avg_60 = 0
-        avg_90 = 0
         avg_120 = 0
+        avg_200 = 0
+
         composite_average = 0
         rvol = 0
         participation_pct = 0
@@ -100,27 +123,30 @@ def calculate_rvol(bars):
             / 60
         )
 
-        avg_90 = (
-            sum(historical_cumulative_volumes[:90])
-            / 90
-        )
-
         avg_120 = (
             sum(historical_cumulative_volumes[:120])
             / 120
         )
 
+        avg_200 = (
+            sum(historical_cumulative_volumes[:200])
+            / 200
+        )
+
         composite_average = (
             avg_20
             + avg_60
-            + avg_90
             + avg_120
+            + avg_200
         ) / 4
 
         rvol = (
             0
             if composite_average == 0
-            else current_cumulative_volume / composite_average
+            else (
+                current_cumulative_volume
+                / composite_average
+            )
         )
 
         participation_pct = (
@@ -131,21 +157,23 @@ def calculate_rvol(bars):
 
     # ==================================================
     # PARTICIPATION CLASSIFICATION
-    #
-    # < 1.50x       NORMAL
-    # 1.50–1.89x    ELEVATED
-    # 1.90–2.49x    EXPANDED
-    # 2.50–2.99x    SIGNIFICANT EXPANSION
-    # 3.00x+        EXTREME
     # ==================================================
 
     volume = (
-        "EXTREME" if rvol >= 3.00 else
-        "SIGNIFICANT EXPANSION" if rvol >= 2.50 else
-        "EXPANDED" if rvol >= 1.90 else
-        "ELEVATED" if rvol >= 1.50 else
-        "NORMAL"
+        "EXTREME"
+        if rvol >= 3.00
+        else "SIGNIFICANT EXPANSION"
+        if rvol >= 2.50
+        else "EXPANDED"
+        if rvol >= 1.90
+        else "ELEVATED"
+        if rvol >= 1.50
+        else "NORMAL"
     )
+
+    # ==================================================
+    # RVOL DIAGNOSTIC
+    # ==================================================
 
     print(
         f"COMPOSITE RVOL | "
@@ -153,8 +181,8 @@ def calculate_rvol(bars):
         f"CURRENT {int(current_cumulative_volume)} | "
         f"20D {int(avg_20)} | "
         f"60D {int(avg_60)} | "
-        f"90D {int(avg_90)} | "
         f"120D {int(avg_120)} | "
+        f"200D {int(avg_200)} | "
         f"COMPOSITE {int(composite_average)} | "
         f"RVOL {rvol:.2f} | "
         f"PART {participation_pct:+.0f}%"
@@ -168,8 +196,8 @@ def calculate_rvol(bars):
         "current_cumulative_volume": current_cumulative_volume,
         "avg_20": avg_20,
         "avg_60": avg_60,
-        "avg_90": avg_90,
         "avg_120": avg_120,
+        "avg_200": avg_200,
         "composite_average": composite_average,
         "comparable_sessions": comparable_sessions,
     }
