@@ -1,6 +1,7 @@
 import os
 import time
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -8,11 +9,13 @@ from watchlist import TICKERS
 from rvol_engine import calculate_rvol
 from price_engine import calculate_price_activity
 from signal_logic import classify_signal
-from event_memory import reconstruct_event_memory
+from event_memory import (
+    reconstruct_event_memory,
+    MIN_RECONSTRUCTION_SESSIONS,
+)
 from send_alert import send_alert
 from state_engine import (
     should_alert,
-    get_previous_state,
     get_previous_event,
     get_alert_context,
     seed_event,
@@ -37,8 +40,18 @@ print("=" * 60)
 CHECK_INTERVAL = 30
 INTRADAY_INTERVAL = "5min"
 
-MIN_HISTORICAL_SESSIONS = 201
+MIN_HISTORICAL_SESSIONS = (
+    MIN_RECONSTRUCTION_SESSIONS
+)
+
 MAX_HISTORICAL_MONTHS = 13
+
+MARKET_TIMEZONE = ZoneInfo(
+    "America/New_York"
+)
+
+REGULAR_SESSION_START = "09:30"
+REGULAR_SESSION_END = "16:00"
 
 HISTORICAL_BAR_CACHE = {}
 
@@ -184,6 +197,109 @@ def count_prior_sessions(
     )
 
 
+def _event_session_date(event):
+    if not event:
+        return None
+
+    return (
+        event.get("latest_date")
+        or event.get("last_alert_date")
+        or event.get("event_start_date")
+    )
+
+
+def get_session_previous_state(
+    symbol,
+    trading_date
+):
+    """
+    Return previous state only when it belongs to the
+    current trading session.
+
+    Historical or prior-session state must never enter
+    today's live classification.
+    """
+
+    event = get_previous_event(
+        symbol
+    )
+
+    if not event:
+        return None
+
+    event_date = _event_session_date(
+        event
+    )
+
+    if (
+        event_date is None
+        or event_date != trading_date
+    ):
+        return None
+
+    return event.get(
+        "state"
+    )
+
+
+def _is_regular_session_now():
+    now_et = datetime.now(
+        MARKET_TIMEZONE
+    )
+
+    current_time = (
+        now_et.strftime("%H:%M")
+    )
+
+    return (
+        REGULAR_SESSION_START
+        <= current_time
+        <= REGULAR_SESSION_END
+    )
+
+
+def _synchronized_price(
+    symbol,
+    quote_price,
+    latest_bar
+):
+    """
+    GLOBAL_QUOTE is used during the regular session.
+
+    Outside the regular session, the intraday request is
+    intentionally configured with extended_hours=false.
+    Therefore the real-time quote must not be mixed with
+    stale regular-session bars.
+
+    Until extended-hours methodology is implemented across
+    RVOL, Price Engine, and Event Memory together, fail
+    closed to the latest synchronized regular-session bar.
+    """
+
+    bar_price = float(
+        latest_bar["close"]
+    )
+
+    if _is_regular_session_now():
+        print(
+            f"{symbol} PRICE SOURCE | "
+            f"REALTIME QUOTE | "
+            f"${quote_price:.2f}"
+        )
+
+        return quote_price
+
+    print(
+        f"{symbol} PRICE SOURCE | "
+        f"REGULAR BAR | "
+        f"${bar_price:.2f} | "
+        f"EXTENDED SESSION QUOTE "
+        f"NOT MIXED"
+    )
+
+    return bar_price
+
+
 def get_historical_intraday(
     symbol,
     latest_timestamp,
@@ -219,7 +335,9 @@ def get_historical_intraday(
         print(
             f"{symbol} HISTORY WARMUP | "
             f"CURRENT SESSIONS: "
-            f"{prior_sessions}"
+            f"{prior_sessions} | "
+            f"REQUIRED: "
+            f"{MIN_HISTORICAL_SESSIONS}"
         )
 
         for months_back in range(
@@ -333,7 +451,9 @@ def get_historical_intraday(
     print(
         f"{symbol} HISTORY READY | "
         f"PRIOR SESSIONS: "
-        f"{final_sessions}"
+        f"{final_sessions} | "
+        f"REQUIRED: "
+        f"{MIN_HISTORICAL_SESSIONS}"
     )
 
     return cached_bars
@@ -348,6 +468,10 @@ def get_market_data(symbol):
                 "not found"
             )
             return None
+
+        # ==================================================
+        # REAL-TIME QUOTE
+        # ==================================================
 
         quote_url = (
             f"https://www.alphavantage.co/query"
@@ -395,7 +519,7 @@ def get_market_data(symbol):
             )
         )
 
-        price = float(
+        quote_price = float(
             global_quote.get(
                 "05. price",
                 0
@@ -410,7 +534,7 @@ def get_market_data(symbol):
         )
 
         if (
-            price == 0
+            quote_price == 0
             or previous_close == 0
         ):
             print(
@@ -418,6 +542,14 @@ def get_market_data(symbol):
                 quote
             )
             return None
+
+        # ==================================================
+        # REGULAR-SESSION INTRADAY BARS
+        #
+        # Extended hours remain disabled intentionally.
+        # The engine will not mix an extended-session
+        # quote with these regular-session bars.
+        # ==================================================
 
         candle_url = (
             f"https://www.alphavantage.co/query"
@@ -497,10 +629,20 @@ def get_market_data(symbol):
             )
             return None
 
+        latest_bar = (
+            current_bars[-1]
+        )
+
         latest_timestamp = (
-            current_bars[-1][
+            latest_bar[
                 "timestamp"
             ]
+        )
+
+        price = _synchronized_price(
+            symbol=symbol,
+            quote_price=quote_price,
+            latest_bar=latest_bar,
         )
 
         bars = get_historical_intraday(
@@ -513,6 +655,7 @@ def get_market_data(symbol):
 
         return {
             "price": price,
+            "quote_price": quote_price,
             "previous_close": (
                 previous_close
             ),
@@ -567,12 +710,11 @@ def ensure_event_memory(
             print(
                 f"EVENT MEMORY RESTORED: "
                 f"{symbol} | "
-                f"STATE "
-                f"{reconstructed_event.get('state')} | "
-                f"COUNT "
-                f"{reconstructed_event.get('alert_count', 1)} | "
-                f"LAST ALERT "
-                f"{reconstructed_event.get('last_alert_price')}"
+                f"HISTORICAL STATE "
+                f"{reconstructed_event.get('historical_state')} | "
+                f"DATE "
+                f"{reconstructed_event.get('historical_date')} | "
+                f"LIVE COUNT 0"
             )
 
         else:
@@ -728,14 +870,24 @@ def run():
                 )
 
                 # ==================================================
-                # STATE + CLASSIFICATION
+                # SESSION-SCOPED PREVIOUS STATE
+                #
+                # Prior-session or reconstructed historical state
+                # is never supplied to today's classifier.
                 # ==================================================
 
                 previous_state = (
-                    get_previous_state(
-                        symbol
+                    get_session_previous_state(
+                        symbol=symbol,
+                        trading_date=(
+                            trading_date
+                        ),
                     )
                 )
+
+                # ==================================================
+                # CLASSIFICATION
+                # ==================================================
 
                 signal = classify_signal(
                     price=price,
@@ -811,12 +963,6 @@ def run():
                     state
                     == "BASELINE"
                 ):
-                    alert_context = (
-                        get_alert_context(
-                            symbol
-                        )
-                    )
-
                     print(
                         f"BASELINE: "
                         f"{symbol} | "
