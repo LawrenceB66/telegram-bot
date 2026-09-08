@@ -197,6 +197,41 @@ def count_prior_sessions(
     )
 
 
+def _market_now():
+    return datetime.now(
+        MARKET_TIMEZONE
+    )
+
+
+def _market_date_now():
+    return _market_now().strftime(
+        "%Y-%m-%d"
+    )
+
+
+def _is_regular_session_now():
+    current_time = (
+        _market_now().strftime("%H:%M")
+    )
+
+    return (
+        REGULAR_SESSION_START
+        <= current_time
+        <= REGULAR_SESSION_END
+    )
+
+
+def _bar_date(bar):
+    try:
+        return (
+            bar["timestamp"]
+            .split(" ")[0]
+        )
+
+    except Exception:
+        return None
+
+
 def _event_session_date(event):
     if not event:
         return None
@@ -242,49 +277,62 @@ def get_session_previous_state(
     )
 
 
-def _is_regular_session_now():
-    now_et = datetime.now(
-        MARKET_TIMEZONE
-    )
-
-    current_time = (
-        now_et.strftime("%H:%M")
-    )
-
-    return (
-        REGULAR_SESSION_START
-        <= current_time
-        <= REGULAR_SESSION_END
-    )
-
-
 def _synchronized_price(
     symbol,
     quote_price,
     latest_bar
 ):
     """
-    GLOBAL_QUOTE is used during the regular session.
+    Synchronize quote and bar context.
 
-    Outside the regular session, the intraday request is
-    intentionally configured with extended_hours=false.
-    Therefore the real-time quote must not be mixed with
-    stale regular-session bars.
+    During regular market hours, a real-time quote may
+    only be used when the latest completed intraday bar
+    belongs to the current Eastern trading date.
 
-    Until extended-hours methodology is implemented across
-    RVOL, Price Engine, and Event Memory together, fail
-    closed to the latest synchronized regular-session bar.
+    This prevents today's real-time quote from being
+    classified against stale prior-session bar structure.
+
+    Outside the regular session, extended-hours bars are
+    intentionally disabled. The engine therefore fails
+    closed to the latest synchronized regular-session bar
+    instead of mixing an extended-session quote with
+    regular-session calculations.
     """
 
     bar_price = float(
         latest_bar["close"]
     )
 
+    latest_bar_date = _bar_date(
+        latest_bar
+    )
+
+    current_market_date = (
+        _market_date_now()
+    )
+
     if _is_regular_session_now():
+        if (
+            latest_bar_date
+            != current_market_date
+        ):
+            print(
+                f"{symbol} SESSION MISMATCH | "
+                f"QUOTE DATE "
+                f"{current_market_date} | "
+                f"LATEST BAR DATE "
+                f"{latest_bar_date} | "
+                f"SKIPPING"
+            )
+
+            return None
+
         print(
             f"{symbol} PRICE SOURCE | "
             f"REALTIME QUOTE | "
-            f"${quote_price:.2f}"
+            f"${quote_price:.2f} | "
+            f"BAR DATE "
+            f"{latest_bar_date}"
         )
 
         return quote_price
@@ -293,6 +341,8 @@ def _synchronized_price(
         f"{symbol} PRICE SOURCE | "
         f"REGULAR BAR | "
         f"${bar_price:.2f} | "
+        f"BAR DATE "
+        f"{latest_bar_date} | "
         f"EXTENDED SESSION QUOTE "
         f"NOT MIXED"
     )
@@ -545,10 +595,6 @@ def get_market_data(symbol):
 
         # ==================================================
         # REGULAR-SESSION INTRADAY BARS
-        #
-        # Extended hours remain disabled intentionally.
-        # The engine will not mix an extended-session
-        # quote with these regular-session bars.
         # ==================================================
 
         candle_url = (
@@ -644,6 +690,9 @@ def get_market_data(symbol):
             quote_price=quote_price,
             latest_bar=latest_bar,
         )
+
+        if price is None:
+            return None
 
         bars = get_historical_intraday(
             symbol=symbol,
@@ -871,9 +920,6 @@ def run():
 
                 # ==================================================
                 # SESSION-SCOPED PREVIOUS STATE
-                #
-                # Prior-session or reconstructed historical state
-                # is never supplied to today's classifier.
                 # ==================================================
 
                 previous_state = (
