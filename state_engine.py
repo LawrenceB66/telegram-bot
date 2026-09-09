@@ -238,7 +238,6 @@ def _material_signal_change(
     if (
         new_family == "COOLING"
         and last_family in {
-            "EXPANSION",
             "MOMENTUM",
             "STALL",
         }
@@ -335,6 +334,8 @@ def _material_signal_change(
 def _material_driver_change(
     last_driver,
     new_driver,
+    last_family=None,
+    new_family=None,
 ):
     """
     A driver transition bypasses the ±5% gate only
@@ -349,6 +350,15 @@ def _material_driver_change(
         or not new_driver
         or last_driver == new_driver
     ):
+        return False
+
+    # Expansion <-> Price Cooling is classification churn,
+    # not a new alert-worthy driver event by itself.
+
+    if {last_family, new_family} == {
+        "EXPANSION",
+        "COOLING",
+    }:
         return False
 
     material_transitions = {
@@ -847,6 +857,12 @@ def should_alert(
             ),
             new_driver=(
                 current_driver
+            ),
+            last_family=(
+                last_alert_family
+            ),
+            new_family=(
+                current_family
             ),
         )
     )
