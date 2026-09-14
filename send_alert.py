@@ -20,7 +20,7 @@ def _ordinal(number):
             3: "rd",
         }.get(
             number % 10,
-            "th"
+            "th",
         )
 
     return f"{number}{suffix}"
@@ -77,8 +77,6 @@ def _alert_descriptor(signal_name):
 
     # ==================================================
     # SAFE FALLBACK
-    #
-    # Never silently erase an unknown signal name.
     # ==================================================
 
     return raw_name
@@ -142,7 +140,7 @@ def send_alert(
         alert_count = int(
             signal.get(
                 "alert_count",
-                1
+                1,
             )
         )
 
@@ -175,22 +173,19 @@ def send_alert(
         # VOLUME DISPLAY
         # ==================================================
 
-        if (
-            participation_pct
-            is not None
-        ):
+        if rvol is not None:
+            volume_line = (
+                f"{float(rvol):.2f}x "
+                f"({volume})"
+            )
+
+        elif participation_pct is not None:
             participation_str = (
                 f"{float(participation_pct):+.0f}%"
             )
 
             volume_line = (
                 f"{participation_str} "
-                f"({volume})"
-            )
-
-        elif rvol is not None:
-            volume_line = (
-                f"{float(rvol):.2f}x RVOL "
                 f"({volume})"
             )
 
