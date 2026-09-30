@@ -9,7 +9,7 @@
 
 TICKERS = [ 
 
-"A", "AAPL", "ABNB", "ABT", "ACN", "ADBE", "ADI", "ADM", "ADP", 
+"A", "AAPL", "ABNB", "ABT", "ACN", "ADBE", "ADI", "ADM", "ADP",
 "AEE", "AEP", "AES", "AFL", "AFRM", "AGL", "AGNC", "AGO", 
 "AIG", "AIZ", "AJG", "AKAM", "AL", "ALB", "ALGN", "ALGM", "ALK", "ALL", 
 "ALLE", "ALLY", "ALNY", "AM", "AMAT", "AMCR", "AMD", "AME", "AMGN", "AMP", 
