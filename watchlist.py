@@ -10,7 +10,7 @@
 TICKERS = [ 
 
 "A", "AAPL", "ABNB", "ABT", "ACN", "ADBE", "ADI", "ADM", "ADP", 
-"ADSK", "AEE", "AEP", "AES", "AFL", "AFRM", "AGCO", "AGL", "AGNC", "AGO", 
+"AEE", "AEP", "AES", "AFL", "AFRM", "AGL", "AGNC", "AGO", 
 "AIG", "AIZ", "AJG", "AKAM", "AL", "ALB", "ALGN", "ALGM", "ALK", "ALL", 
 "ALLE", "ALLY", "ALNY", "AM", "AMAT", "AMCR", "AMD", "AME", "AMGN", "AMP", 
 "AMT", "AMZN", "ANET", "AOS", "APA", "APD", "APH", "APO", "APP", 
@@ -20,24 +20,24 @@ TICKERS = [
 "BA", "BAC", "BAH", "BALL", "BAX", "BBWI", "BBY", "BC", "BD", "BDX",
 "BEN", "BF.B", "BG", "BIIB", "BILL", "BIO", "BJ", "BK", "BKNG", "BKR",
 "BLDR", "BLK", "BMY", "BN", "BNSO", "BOH", "BR", "BRK.B", "BRO", "BSX",
-"BSY", "BURL", "BV", "BWA", "BX", "BXP",
+"BSY", "BURL", "BV", "BWA", "BX",
 
 "C", "CAG", "CAH", "CARR", "CAT", "CB", "CBOE", "CBRE", "CCI", "CCL",
-"CDNS", "CDW", "CE", "CEG", "CF", "CFG", "CHD", "CHRW", "CI", "CINF",
+"CDNS", "CDW", "CE", "CF", "CFG", "CHD", "CHRW", "CI", "CINF",
 "CL", "CLX", "CMCSA", "CME", "CMG", "CMI", "CMS", "CNC", "CNP", "CNX",
 "COF", "COO", "COP", "COR", "COST", "CPB", "CPRT", "CPT", "CR", "CRBG",
 "CRL", "CRM", "CRWD", "CSCO", "CSGP", "CSX", "CTAS", "CTRA", "CTSH",
 "CTVA", "CVS", "CVX", "CW",
 
-"DAL", "DAY", "DD", "DDOG", "DE", "DELL", "DFS", "DG", "DGX", "DHI",
-"DHR", "DIS", "DLR", "DLTR", "DOCU", "DOV", "DOW", "DPZ", "DRI", "DTE",
+"DAL", "DAY", "DD", "DE", "DELL", "DFS", "DG", "DGX", "DHI",
+"DHR", "DIS", "DLR", "DLTR", "DOV", "DOW", "DPZ", "DRI", "DTE",
 "DUK", "DVA", "DVN", "DXCM",
 
-"EA", "EBAY", "ECL", "ED", "EFX", "EL", "ELV", "EMR", "EOG",
+"EA", "EBAY", "ECL", "ED", "EL", "ELV", "EMR", "EOG",
 "EPAM", "EQIX", "EQR", "ES", "ETN", "ETR", "EVRG", "EW", "EXC",
 "EXPD", "EXPE", "EXR",
 
-"F", "FANG", "FAST", "FCX", "FDS", "FDX", "FE", "FFIV", "FIS", "FISV",
+"F", "FANG", "FAST", "FCX", "FDX", "FE", "FFIV", "FIS", "FISV",
 "FITB", "FLEX", "FLT", "FMC", "FND", "FNF", "FOX", "FOXA", "FSLR",
 "FTNT", "FTV",
 
@@ -48,12 +48,12 @@ TICKERS = [
 "HPE", "HPQ", "HRL", "HSIC", "HST", "HSY", "HUBB", "HUM", "HWM",
 
 "IBM", "ICE", "IDXX", "IEX", "IFF", "ILMN", "INCY", "INTC", "INTU",
-"INVH", "IP", "IPG", "IQV", "IR", "IRM", "ISRG", "IT", "ITW", "IVZ",
+"INVH", "IP", "IPG", "IQV", "IR", "IRM", "ISRG", "ITW", "IVZ",
 
-"J", "JBL", "JCI", "JKHY", "JNJ", "JNPR", "JPM",
+"J", "JCI", "JKHY", "JNJ", "JNPR", "JPM",
 
 "K", "KDP", "KEY", "KEYS", "KHC", "KIM", "KLAC", "KMB", "KMI", "KMX",
-"KO", "KR", "KVUE",
+"KO", "KR",
 
 "L", "LDOS", "LEN", "LH", "LHX", "LIN", "LKQ", "LLY", "LMT", "LNC",
 "LNT", "LOW", "LRCX", "LULU", "LUV", "LVS", "LW", "LYB", "LYV",
@@ -68,16 +68,16 @@ TICKERS = [
 
 "O", "OKE", "OKTA", "OMC", "ON", "ORCL", "ORLY", "OTIS", "OXY",
 
-"PANW", "PAYC", "PAYX", "PCAR", "PCG", "PEG", "PEP", "PFE", "PFG", "PG",
+"PANW", "PAYC", "PAYX", "PCAR", "PCG", "PEG", "PEP", "PFE", "PG",
 "PGR", "PH", "PHM", "PKG", "PLD", "PLTR", "PM", "PNC", "PNW",
 "PODD", "POOL", "PPG", "PPL", "PRU", "PSA", "PSX", "PTC", "PWR", "PYPL",
 
-"QCOM", "QRVO", "QQQ",
+"QCOM", "QQQ",
 
 "RCL", "REG", "REGN", "RF", "RHI", "RJF", "RMD", "ROK", "ROL", "ROP",
 "ROST", "RSG", "RTX", "RVTY",
 
-"SBAC", "SBUX", "SCHW", "SHW", "SJM", "SLB", "SNA", "SNPS", "SO", "SPY",
+"SBAC", "SBUX", "SCHW", "SHW", "SJM", "SLB", "SNA", "SO", "SPY",
 "SPG", "SPGI", "SRE", "STE", "STLD", "STT", "STX", "STZ", "SWK", "SWKS", 
 "SYF", "SYK", "SYY",
 
@@ -97,5 +97,5 @@ TICKERS = [
 
 "YUM",
 
-"ZBH", "ZBRA", "ZTS",
+"ZBRA", "ZTS",
 ]
