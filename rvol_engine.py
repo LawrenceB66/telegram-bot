@@ -1,7 +1,6 @@
 RVOL_LOOKBACKS = (20, 60, 120, 200)
 MAX_RVOL_LOOKBACK = 200
 
-
 def calculate_rvol(bars):
     """
     Calculate IAL Composite RVOL using cumulative same-time volume
@@ -25,7 +24,6 @@ def calculate_rvol(bars):
 
     current_bar = bars[-1]
     current_timestamp = current_bar["timestamp"]
-
     current_date = current_timestamp.split(" ")[0]
     current_time = current_timestamp.split(" ")[1][:5]
 
@@ -37,7 +35,6 @@ def calculate_rvol(bars):
 
     for bar in bars:
         timestamp = bar["timestamp"]
-
         bar_date = timestamp.split(" ")[0]
         bar_time = timestamp.split(" ")[1][:5]
 
@@ -107,7 +104,6 @@ def calculate_rvol(bars):
         avg_60 = 0
         avg_120 = 0
         avg_200 = 0
-
         composite_average = 0
         rvol = 0
         participation_pct = 0
@@ -161,13 +157,13 @@ def calculate_rvol(bars):
 
     volume = (
         "EXTREME"
-        if rvol >= 3.00
+        if rvol >= 7.00
         else "SIGNIFICANT EXPANSION"
-        if rvol >= 2.50
+        if rvol >= 5.00
         else "EXPANDED"
-        if rvol >= 1.90
-        else "ELEVATED"
-        if rvol >= 1.50
+        if rvol >= 4.00
+        else "SLIGHTLY ELEVATED"
+        if rvol >= 2.50
         else "NORMAL"
     )
 
