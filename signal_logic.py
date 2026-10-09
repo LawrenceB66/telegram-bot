@@ -58,7 +58,7 @@ def classify_signal(
 
         volume_rank = {
             "NORMAL": 0,
-            "ELEVATED": 1,
+            "SLIGHTLY ELEVATED": 1,
             "EXPANDED": 2,
             "SIGNIFICANT EXPANSION": 3,
             "EXTREME": 4,
@@ -134,23 +134,13 @@ def classify_signal(
 
         # ==================================================
         # BREAKDOWN
-        #
-        # Structural failure requires:
-        #
-        # • material drawdown from session high
-        # • price still near session low
-        # • active present-tense deterioration
-        # • elevated participation
-        # • abnormal price activity
-        #
-        # Prior state alone cannot create Breakdown.
         # ==================================================
 
         breakdown = (
             material_intraday_reversal
             and near_session_low
             and active_deterioration
-            and rvol >= 1.50
+            and rvol >= 2.50
             and v_rank >= 1
             and price_activity_ratio >= 1.00
         )
@@ -170,17 +160,6 @@ def classify_signal(
 
         # ==================================================
         # PRICE COOLING
-        #
-        # Earlier deterioration from a constructive state.
-        #
-        # Cooling may progress through:
-        #
-        # SLOWING
-        # REVERSING
-        # NEGATIVE
-        #
-        # without being mislabeled Breakdown before
-        # structural failure actually exists.
         # ==================================================
 
         if (
@@ -212,7 +191,7 @@ def classify_signal(
 
         if (
             change_pct <= -10
-            and rvol >= 2.50
+            and rvol >= 5.00
             and v_rank >= 3
             and price_activity_ratio >= 1.50
             and downside_vel_rank >= 3
@@ -235,7 +214,7 @@ def classify_signal(
 
         if (
             change_pct <= -7
-            and rvol >= 2.00
+            and rvol >= 4.00
             and v_rank >= 2
             and price_activity_ratio >= 1.25
             and downside_vel_rank >= 2
@@ -258,7 +237,7 @@ def classify_signal(
 
         if (
             change_pct <= -5
-            and rvol >= 1.50
+            and rvol >= 2.50
             and v_rank >= 1
             and price_activity_ratio >= 1.00
             and downside_vel_rank >= 1
@@ -285,7 +264,7 @@ def classify_signal(
                 "EXTENDED"
             ]
             and change_pct >= 10
-            and rvol >= 2.50
+            and rvol >= 5.00
             and v_rank >= 3
             and price_activity_ratio >= 1.50
             and velocity in [
@@ -312,7 +291,7 @@ def classify_signal(
 
         if (
             change_pct >= 10
-            and rvol >= 2.50
+            and rvol >= 5.00
             and v_rank >= 3
             and price_activity_ratio >= 1.50
             and vel_rank >= 2
@@ -336,7 +315,7 @@ def classify_signal(
 
         if (
             change_pct >= 7
-            and rvol >= 2.00
+            and rvol >= 4.00
             and v_rank >= 2
             and price_activity_ratio >= 1.25
             and vel_rank >= 2
@@ -360,7 +339,7 @@ def classify_signal(
 
         if (
             change_pct >= 5
-            and rvol >= 1.50
+            and rvol >= 2.50
             and v_rank >= 1
             and price_activity_ratio >= 1.00
             and vel_rank >= 1
@@ -380,17 +359,11 @@ def classify_signal(
 
         # ==================================================
         # PRESSURE BUILDING
-        #
-        # Direction-neutral discovery.
-        #
-        # Extreme participation with contained price
-        # activity matters whether immediate drift is
-        # slightly positive or slightly negative.
         # ==================================================
 
         if (
             abs(change_pct) < 5
-            and rvol >= 3.00
+            and rvol >= 7.00
             and v_rank >= 4
             and 0 < price_activity_ratio <= 1.00
             and not material_intraday_reversal
