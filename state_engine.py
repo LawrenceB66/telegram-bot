@@ -214,174 +214,6 @@ def _signal_family(
     return state_name or None
 
 
-def _material_signal_change(
-    last_family,
-    new_family,
-):
-    """
-    Classification changes are not automatically
-    alert-worthy.
-
-    Only meaningful escalation or a true directional
-    regime reversal bypasses the ±5% repeat-alert gate.
-    """
-
-    if (
-        not last_family
-        or not new_family
-        or last_family == new_family
-    ):
-        return False
-
-    # Bullish deterioration
-
-    if (
-        new_family == "COOLING"
-        and last_family in {
-            "MOMENTUM",
-            "STALL",
-        }
-    ):
-        return True
-
-    if (
-        new_family == "STALL"
-        and last_family in {
-            "EXPANSION",
-            "MOMENTUM",
-        }
-    ):
-        return True
-
-    # Bullish escalation
-
-    if (
-        last_family == "PRESSURE"
-        and new_family in {
-            "EXPANSION",
-            "MOMENTUM",
-        }
-    ):
-        return True
-
-    if (
-        new_family == "MOMENTUM"
-        and last_family in {
-            "PRESSURE",
-            "EXPANSION",
-        }
-    ):
-        return True
-
-    # Bearish escalation
-    #
-    # Downside Expansion -> Breakdown is deliberately
-    # NOT an automatic alert.
-    #
-    # Breakdown may classify internally, but the State
-    # Engine still requires the normal ±5% repeat gate
-    # unless another material component independently
-    # enters the event.
-
-    if (
-        new_family == "DOWNSIDE_EXPANSION"
-        and last_family in {
-            "PRESSURE",
-            "EXPANSION",
-            "MOMENTUM",
-            "STALL",
-            "COOLING",
-        }
-    ):
-        return True
-
-    if (
-        new_family == "DOWNSIDE_MOMENTUM"
-        and last_family in {
-            "PRESSURE",
-            "EXPANSION",
-            "MOMENTUM",
-            "STALL",
-            "COOLING",
-            "DOWNSIDE_EXPANSION",
-        }
-    ):
-        return True
-
-    # True bearish -> bullish regime reversal
-
-    if (
-        last_family in {
-            "BREAKDOWN",
-            "DOWNSIDE_EXPANSION",
-            "DOWNSIDE_MOMENTUM",
-        }
-        and new_family in {
-            "EXPANSION",
-            "MOMENTUM",
-        }
-    ):
-        return True
-
-    # Legacy Exhaustion
-
-    if new_family == "EXHAUSTION":
-        return True
-
-    return False
-
-
-def _material_driver_change(
-    last_driver,
-    new_driver,
-    last_family=None,
-    new_family=None,
-):
-    """
-    A driver transition bypasses the ±5% gate only
-    when a meaningful new component enters the event.
-    """
-
-    last_driver = _normalize_driver(last_driver)
-    new_driver = _normalize_driver(new_driver)
-
-    if (
-        not last_driver
-        or not new_driver
-        or last_driver == new_driver
-    ):
-        return False
-
-    # Expansion <-> Price Cooling is classification churn,
-    # not a new alert-worthy driver event by itself.
-
-    if {last_family, new_family} == {
-        "EXPANSION",
-        "COOLING",
-    }:
-        return False
-
-    material_transitions = {
-        (
-            "VOLUME",
-            "PRICE",
-        ),
-        (
-            "VOLUME",
-            "PRICE + VOLUME",
-        ),
-        (
-            "PRICE",
-            "PRICE + VOLUME",
-        ),
-    }
-
-    return (
-        last_driver,
-        new_driver,
-    ) in material_transitions
-
-
 def _event_session_date(event):
     if not event:
         return None
@@ -597,8 +429,8 @@ def should_alert(
     # ==================================================
     # BASELINE
     #
-    # Baseline updates the latest observation but does
-    # NOT erase the active event state.
+    # Baseline observations do not terminate an
+    # active event or overwrite its classification.
     # ==================================================
 
     if new_state == "BASELINE":
@@ -795,36 +627,6 @@ def should_alert(
     # LAST ACTUAL ALERT CONTEXT
     # ==================================================
 
-    last_alert_family = (
-        previous_event.get(
-            "last_alert_signal_family"
-        )
-    )
-
-    if not last_alert_family:
-        last_alert_family = (
-            _signal_family(
-                signal_name=(
-                    previous_event.get(
-                        "last_alert_signal_name"
-                    )
-                ),
-                state=(
-                    previous_event.get(
-                        "state"
-                    )
-                ),
-            )
-        )
-
-    last_alert_driver = (
-        _normalize_driver(
-            previous_event.get(
-                "last_alert_driver"
-            )
-        )
-    )
-
     move_from_last_alert_pct = (
         _move_from_last_alert(
             current_price,
@@ -833,38 +635,8 @@ def should_alert(
     )
 
     material_move = (
-        abs(
-            move_from_last_alert_pct
-        )
+        abs(move_from_last_alert_pct)
         >= REPEAT_ALERT_MOVE_PCT
-    )
-
-    material_signal_change = (
-        _material_signal_change(
-            last_family=(
-                last_alert_family
-            ),
-            new_family=(
-                current_family
-            ),
-        )
-    )
-
-    material_driver_change = (
-        _material_driver_change(
-            last_driver=(
-                last_alert_driver
-            ),
-            new_driver=(
-                current_driver
-            ),
-            last_family=(
-                last_alert_family
-            ),
-            new_family=(
-                current_family
-            ),
-        )
     )
 
     alert_count = int(
@@ -914,87 +686,11 @@ def should_alert(
     )
 
     # ==================================================
-    # MATERIAL SIGNAL CHANGE
-    # ==================================================
-
-    if material_signal_change:
-        alert_count += 1
-
-        previous_event.update(
-            {
-                "last_alert_date": (
-                    current_date
-                ),
-                "last_alert_price": (
-                    current_price
-                ),
-                "last_alert_signal_name": (
-                    current_signal_name
-                ),
-                "last_alert_driver": (
-                    current_driver
-                ),
-                "last_alert_signal_family": (
-                    current_family
-                ),
-                "alert_count": (
-                    alert_count
-                ),
-                "last_event_type": (
-                    "SIGNAL_CHANGE"
-                ),
-                "last_move_from_alert_pct": 0,
-            }
-        )
-
-        state[symbol] = previous_event
-
-        save_state(state)
-
-        return True
-
-    # ==================================================
-    # NEW DRIVER COMPONENT
-    # ==================================================
-
-    if material_driver_change:
-        alert_count += 1
-
-        previous_event.update(
-            {
-                "last_alert_date": (
-                    current_date
-                ),
-                "last_alert_price": (
-                    current_price
-                ),
-                "last_alert_signal_name": (
-                    current_signal_name
-                ),
-                "last_alert_driver": (
-                    current_driver
-                ),
-                "last_alert_signal_family": (
-                    current_family
-                ),
-                "alert_count": (
-                    alert_count
-                ),
-                "last_event_type": (
-                    "DRIVER_CHANGE"
-                ),
-                "last_move_from_alert_pct": 0,
-            }
-        )
-
-        state[symbol] = previous_event
-
-        save_state(state)
-
-        return True
-
-    # ==================================================
     # ±5% REPEAT ALERT
+    #
+    # Classification and driver changes are retained
+    # internally but cannot independently bypass
+    # the material price-movement requirement.
     # ==================================================
 
     if material_move:
