@@ -1,6 +1,6 @@
 import os
 import time
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 
 import requests
@@ -195,6 +195,74 @@ def count_prior_sessions(
     return len(
         dates
     )
+
+
+# ==================================================
+# U.S. EQUITY MARKET CALENDAR — FULL-DAY CLOSURES
+# ==================================================
+
+def _observed_holiday(year, month, day):
+    holiday = date(year, month, day)
+    if holiday.weekday() == 5:
+        return holiday - timedelta(days=1)
+    if holiday.weekday() == 6:
+        return holiday + timedelta(days=1)
+    return holiday
+
+
+def _nth_weekday(year, month, weekday, n):
+    first = date(year, month, 1)
+    offset = (weekday - first.weekday()) % 7
+    return first + timedelta(days=offset + 7 * (n - 1))
+
+
+def _last_weekday(year, month, weekday):
+    if month == 12:
+        last = date(year, 12, 31)
+    else:
+        last = date(year, month + 1, 1) - timedelta(days=1)
+    return last - timedelta(days=(last.weekday() - weekday) % 7)
+
+
+def _easter_sunday(year):
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = (h + l - 7 * m + 114) % 31 + 1
+    return date(year, month, day)
+
+
+def _market_holidays(year):
+    holidays = set()
+    for holiday_year in (year - 1, year, year + 1):
+        holidays.update((
+            _observed_holiday(holiday_year, 1, 1),
+            _nth_weekday(holiday_year, 1, 0, 3),
+            _nth_weekday(holiday_year, 2, 0, 3),
+            _easter_sunday(holiday_year) - timedelta(days=2),
+            _last_weekday(holiday_year, 5, 0),
+            _observed_holiday(holiday_year, 6, 19),
+            _observed_holiday(holiday_year, 7, 4),
+            _nth_weekday(holiday_year, 9, 0, 1),
+            _nth_weekday(holiday_year, 11, 3, 4),
+            _observed_holiday(holiday_year, 12, 25),
+        ))
+    return holidays
+
+
+def _market_closed_today():
+    today = _market_now().date()
+    return today.weekday() >= 5 or today in _market_holidays(today.year)
 
 
 def _market_now():
@@ -788,7 +856,19 @@ def run():
     print("=" * 60)
 
     while True:
+        if _market_closed_today():
+            print(
+                f"MARKET CLOSED | {_market_date_now()} | "
+                "SCANNER PAUSED — NO API REQUESTS"
+            )
+            time.sleep(300)
+            continue
+
         for symbol in TICKERS:
+            if _market_closed_today():
+                print("MARKET CLOSED | SCAN INTERRUPTED")
+                break
+
             try:
                 market_data = (
                     get_market_data(
