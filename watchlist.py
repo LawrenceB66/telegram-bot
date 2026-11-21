@@ -1,11 +1,10 @@
-==========================================================
-IT AIN'T LUCK LLC MASTER DISCOVERY UNIVERSE
-#
-Complete A-Z ticker universe monitored by the
-IAL Product Engine.
-#
-bot.py imports TICKERS directly from this file.
-==========================================================
+# ============================================================
+# IT AIN'T LUCK LLC MASTER DISCOVERY UNIVERSE
+# Complete A-Z ticker universe monitored by the
+# IAL Product Engine.
+# bot.py imports TICKERS directly from this file.
+# ============================================================
+
 TICKERS = [
 "A", "AAL", "AAPL", "AAT", "ABEO", "ABNB", "ABOS", "ABT", "ABUS", "ACB",
 "ACLS", "ACN", "ADBE", "ADCT", "ADI", "ADM", "ADP", "ADPT", "AEE", "AEHR",
